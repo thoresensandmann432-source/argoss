@@ -210,6 +210,8 @@ def _get_gpu_info() -> str:
                     name = open(name_path).read().strip() if os.path.exists(name_path) else os.path.basename(card)
                     vid = {"0x1002": "AMD", "0x10de": "NVIDIA", "0x8086": "Intel"}.get(vendor, "Unknown")
                     report += f"  🟣 {vid}: {name}\n"
+                except Exception:
+                    pass
         except Exception:
             pass
 
@@ -223,7 +225,3 @@ def _get_gpu_info() -> str:
 
     report += "🛡️  [SEC]: Целостность ядра 100%."
     return report
-        except Exception:
-            pass
-
-    return "  ⚪ GPU: не обнаружен\n"
