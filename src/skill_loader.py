@@ -97,6 +97,7 @@ class SkillInstance:
         self._started = False
 
     def start(self, core=None):
+        log.info("SkillInstance.start: module=%s, core=%s", getattr(self.module, '__name__', '?'), type(core).__name__ if core else None)
         if hasattr(self.module, "setup"):
             try:
                 self.module.setup(core)
@@ -263,8 +264,10 @@ class SkillLoader:
     def dispatch(self, text: str, core=None) -> str | None:
         for name, inst in self._skills.items():
             try:
+                log.info("Dispatch checking skill: %s", name)
                 result = inst.handle(text, core)
                 if result:
+                    log.info("Skill %s matched, result length: %d", name, len(result) if result else 0)
                     bus.emit(
                         Events.SKILL_EXECUTED, {"skill": name, "input": text[:80]}, "skill_loader"
                     )

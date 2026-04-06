@@ -38,6 +38,7 @@ class ArgosEvolution:
     def setup(self, core=None):
         if core:
             self.core = core
+            log.info("Evolution.setup: core=%s has _ask_gemini: %s", type(core).__name__, hasattr(core, '_ask_gemini'))
 
     def _sanitize_filename(self, name: str) -> str:
         raw = (name or "").strip().lower().replace(".py", "")
@@ -262,6 +263,7 @@ class ArgosEvolution:
     def generate_skill(self, description: str) -> str:
         """Генерирует навык + тест и принимает только после review/test gate."""
         if not self.core:
+            log.error("Evolution: self.core is None! core=%s", self.core)
             return "❌ Нет доступа к ядру ИИ. Передай core при инициализации."
 
         prompt = (
@@ -342,3 +344,22 @@ class ArgosEvolution:
         if not desc:
             return "🧬 Эволюция Аргоса: опиши какой навык создать.\nПример: \"эволюция: создай навык для мониторинга CPU\""
         return self.generate_skill(desc)
+
+
+# Module-level handle for skill_loader
+_evolution_instance = None
+
+
+def handle(text: str, core=None) -> str | None:
+    global _evolution_instance
+    if _evolution_instance is None:
+        _evolution_instance = ArgosEvolution(ai_core=core)
+    return _evolution_instance.handle(text, core)
+
+
+def setup(core=None):
+    global _evolution_instance
+    if _evolution_instance is None:
+        _evolution_instance = ArgosEvolution(ai_core=core)
+    else:
+        _evolution_instance.core = core
