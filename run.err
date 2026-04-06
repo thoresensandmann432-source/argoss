@@ -1,0 +1,395 @@
+18:08:42 [INFO] argos.main: [API] Content API запущен: http://127.0.0.1:5050
+18:08:42 [INFO] argos.main: [BRIDGE] win_bridge_host стартован на 5000
+18:08:44 [INFO] argos.eventbus: EventBus запущен (history=500)
+18:08:44 [INFO] argos.main: ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+18:08:44 [INFO] argos.main:  ARGOS UNIVERSAL OS v2.1.3 — BOOT
+18:08:44 [INFO] argos.main: ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+18:08:45 [INFO] argos.encryption: Encryption: ключ загружен из config/master.key
+18:08:45 [INFO] argos.main: [SHIELD] AES-256 активирован
+18:08:45 [INFO] argos.main: [ROOT] ⚠️ Обычные права пользователя (Windows). Некоторые функции недоступны.
+18:08:45 [INFO] argos.db: DB инициализирована: data/argos_memory.db
+18:08:45 [INFO] argos.main: [DB] SQLite ready → data/argos.db
+18:08:48 [INFO] argos.main: [GEO] {'ip': '178.130.47.10', 'country': 'United States', 'region': 'Arizona', 'city': 'Phoenix', 'isp': 'Global Connectivity Solutions LLP', 'lat': 33.4532, 'lon': -112.0748, 'timezone': 'America/Phoenix'}
+18:08:48 [INFO] argos.main: [ADMIN] Файловый менеджер и flasher готовы
+18:08:48 [INFO] argos.core: TTS: OK
+18:08:48 [INFO] argos.core: Gemini недоступен — используется Ollama
+18:08:48 [INFO] argos.core: [Ollama] Проверяю доступность: http://localhost:11434/api/tags
+18:08:48 [INFO] argos.core: [Ollama] ✅ Уже запущен (http://localhost:11434/api/tags)
+18:08:48 [INFO] argos.core: Ollama: ✅ доступна (резервный провайдер готов)
+18:08:48 [INFO] argos.core: GigaChat: конфигурация обнаружена
+18:08:48 [INFO] argos.core: YandexGPT недоступен — нет IAM/FOLDER
+18:08:48 [INFO] argos.core: Kimi: конфигурация обнаружена (KIMI_API_KEY)
+18:09:04 [INFO] argos.vector: VectorStore: ChromaDB активирован (data/chroma)
+18:09:04 [INFO] argos.memory: Vector warmup: scheduled in background (180 docs)
+18:09:04 [INFO] argos.thought_book: ThoughtBook инициализирована: 191 промтов, 10 частей.
+18:09:04 [INFO] argos.core: Память: OK
+18:09:04 [INFO] argos.hardware_guard: Hardware guard: ON
+18:09:04 [INFO] argos.core: Homeostasis: OK
+18:09:04 [INFO] argos.curiosity: Curiosity: автономный режим запущен.
+18:09:04 [INFO] argos.core: Curiosity: OK
+18:09:04 [INFO] argos.scheduler: Scheduler запущен. Задач: 0
+18:09:04 [INFO] argos.core: Планировщик: OK
+18:09:04 [INFO] argos.alerts: AlertSystem запущен. Интервал: 30s
+18:09:04 [INFO] argos.core: Алерты: OK
+18:09:04 [INFO] argos.core: Vision: OK
+18:09:04 [INFO] argos.skills: Навык загружен: content_gen v1.3.0
+18:09:04 [INFO] argos.skills: Навык загружен: crypto_monitor v1.1.0
+18:09:04 [INFO] argos.skills: Навык загружен: evolution v2.1.0
+18:09:04 [INFO] argos.skills: Навык загружен: firmware_manager v1.0.0
+18:09:04 [INFO] argos.skills: Навык загружен: net_scanner v1.2.0
+18:09:04 [INFO] argos.skills: Навык загружен: scheduler v2.0.0
+18:09:04 [INFO] argos.skills: Навык загружен: weather v1.0.0
+18:09:04 [INFO] argos.skills: Навык загружен: web_scrapper v1.0.1
+18:09:04 [INFO] argos.core: SkillLoader: OK
+18:09:04 [INFO] argos.core: 📦 Обнаружено навыков: 8 | ✅ Навык 'content_gen' v1.3.0 загружен. | ✅ Навык 'crypto_monitor' v1.1.0 загружен. | ✅ Навык 'evolution' v2.1.0 загружен. | ✅ Навык 'firmware_manager' v1.0.0 загружен. | ✅ Навык 'net_scanner' v1.2.0 загружен. | ✅ Навык 'scheduler' v2.0.0 загружен. | ✅ Навык 'weather' v1.0.0 загружен. | ✅ Навык 'web_scrapper' v1.0.1 загружен.
+18:09:04 [INFO] argos.skills: Навык загружен: content_gen v1.3.0
+18:09:04 [INFO] argos.skills: Навык загружен: crypto_monitor v1.1.0
+18:09:04 [INFO] argos.skills: Навык загружен: evolution v2.1.0
+18:09:04 [INFO] argos.skills: Навык загружен: firmware_manager v1.0.0
+18:09:04 [INFO] argos.skills: Навык загружен: net_scanner v1.2.0
+18:09:04 [INFO] argos.skills: Навык загружен: scheduler v2.0.0
+18:09:04 [INFO] argos.skills: Навык загружен: weather v1.0.0
+18:09:04 [INFO] argos.skills: Навык загружен: web_scrapper v1.0.1
+18:09:04 [INFO] argos.skill_loader: FlatSkill загружен: ai_coder
+18:09:04 [INFO] argos.skill_loader: FlatSkill загружен: arc_agi3_skill
+18:09:04 [INFO] argos.skill_loader: FlatSkill загружен: argos_patcher
+18:09:04 [INFO] argos.skill_loader: FlatSkill загружен: argos_service
+18:09:04 [INFO] argos.skill_loader: FlatSkill загружен: auto_backup
+18:09:04 [INFO] argos.skill_loader: FlatSkill загружен: autonomy_fileops
+18:09:04 [INFO] argos.skill_loader: FlatSkill загружен: browser_conduit
+18:09:04 [INFO] argos.skill_loader: FlatSkill загружен: crypto_utils
+18:09:04 [INFO] argos.skill_loader: FlatSkill загружен: desktop_actions
+18:09:04 [INFO] argos.skill_loader: FlatSkill загружен: ebay_parser
+18:09:04 [INFO] argos.skill_loader: FlatSkill загружен: esp32_usb_bridge
+18:09:04 [INFO] argos.skill_loader: FlatSkill загружен: fastapi_skill
+18:09:04 [INFO] argos.skill_loader: FlatSkill загружен: firmware_examples
+18:09:04 [INFO] argos.skill_loader: FlatSkill загружен: ga4_analytics
+18:09:04 [INFO] argos.skill_loader: FlatSkill загружен: hardware_intel
+18:09:04 [INFO] argos.skill_loader: FlatSkill загружен: huggingface_ai
+18:09:04 [INFO] argos.skill_loader: FlatSkill загружен: iot_watchdog
+18:09:04 [INFO] argos.skill_loader: FlatSkill загружен: multi_provider_chat
+18:09:04 [INFO] argos.skill_loader: FlatSkill загружен: network_shadow
+18:09:04 [INFO] argos.skill_loader: FlatSkill загружен: pip_manager
+18:09:04 [INFO] argos.skill_loader: FlatSkill загружен: serp_search
+18:09:04 [INFO] argos.skill_loader: FlatSkill загружен: shodan_scanner
+18:09:04 [INFO] argos.skill_loader: FlatSkill загружен: smart_environments
+18:09:04 [INFO] argos.skill_loader: FlatSkill загружен: smtp_mailer
+18:09:04 [INFO] argos.skill_loader: FlatSkill загружен: system_monitor
+18:09:04 [INFO] argos.skill_loader: FlatSkill загружен: tasmota_updater
+18:09:04 [INFO] argos.skill_loader: FlatSkill загружен: test_injected
+18:09:04 [INFO] argos.skill_loader: FlatSkill загружен: tg_code_injector
+18:09:04 [INFO] argos.skill_loader: FlatSkill загружен: ton_blockchain
+18:09:04 [INFO] argos.skill_loader: FlatSkill загружен: usb_access_point
+18:09:04 [INFO] argos.skill_loader: FlatSkill загружен: web_explorer
+18:09:04 [INFO] argos.core: PatchedSkillLoader: OK
+18:09:04 [INFO] argos.core: DAG Manager: OK
+18:09:04 [INFO] argos.core: GitHub Marketplace: OK
+18:09:04 [INFO] argos.core: OPi GPIO patch: GPIO=False I2C=False
+18:09:04 [INFO] argos.iot: IoTBridge инициализирован. Устройств: 0
+18:09:04 [INFO] argos.core: IoT Bridge: OK (0 устройств)
+18:09:04 [INFO] argos.core: IoT Emulator Manager: OK
+18:09:04 [INFO] argos.core: Mesh Network: OK (0 устройств)
+18:09:04 [INFO] argos.gateway: Шлюзы загружены: 2
+18:09:04 [INFO] argos.core: Gateway Manager: OK
+18:09:05 [WARNING] argos.alerts: ALERT: 💿 Диск почти заполнен: 94.7% (свободно 5GB)
+18:09:05 [WARNING] argos.core: ALERT: ⚠️ ARGOS ALERT
+💿 Диск почти заполнен: 94.7% (свободно 5GB)
+18:09:06 [WARNING] argos.core: Industrial Protocols: invalid literal for int() with base 10: 'COM2'
+18:09:06 [INFO] argos.platform_admin: PlatformAdmin init | OS=Windows android=False termux=False
+18:09:06 [INFO] argos.core: PlatformAdmin: OK (os=Windows)
+18:09:06 [INFO] argos.smart: SmartSystems: загружено 5 систем
+18:09:06 [INFO] argos.core: Smart Systems: OK (5 систем)
+18:09:06 [INFO] argos.core: Home Assistant bridge: OFF
+18:09:06 [INFO] argos.modules: Модуль загружен: system_monitor (src.modules.system_monitor_module)
+18:09:06 [INFO] argos.modules: Модуль загружен: vision (src.modules.vision_module)
+18:09:06 [INFO] argos.modules: Модуль загружен: voice (src.modules.voice_module)
+18:09:06 [INFO] argos.core: 🧩 Modules: 3 загружено |   system_monitor, vision, voice
+18:09:06 [INFO] argos.core: ToolCalling: OK (6 инструментов)
+18:09:06 [INFO] argos.core: Awareness: OK
+18:09:06 [INFO] argos.eventbus: EventBus запущен (history=500)
+18:09:06 [INFO] argos.core: EventBus: OK
+18:09:06 [INFO] argos.core: IoTHub: OK
+18:09:06 [INFO] argos.life_support: ExpenseMonitor init
+18:09:06 [INFO] argos.life_support: EarningEngine init
+18:09:06 [INFO] argos.life_support: ArgosLifeSupport init ✅
+18:09:06 [INFO] argos.core: LifeSupport: OK
+18:09:07 [INFO] argos.core: WatsonX: ключ не задан (WATSONX_API_KEY / WATSONX_PROJECT_ID)
+18:09:07 [INFO] argos.core: IBM Quantum: токен задан
+18:09:07 [INFO] argos.core: Slack: SLACK_BOT_TOKEN не задан
+18:09:07 [INFO] argos.core: SerpSearch: backend=serpapi
+18:09:07 [INFO] argos.core: GitOps: OK
+18:09:07 [INFO] argos.otg: OTGManager инициализирован (android=False, serial=True, jnius=False)
+18:09:07 [INFO] argos.core: OTG Manager: OK
+18:09:08 [INFO] argos.core: OwnModel: OK
+18:09:08 [INFO] argos.evolver: ArgossEvolver готов (модель=llama3:8b v1)
+18:09:08 [INFO] argos.core: ArgossEvolver: OK (модель: llama3:8b, версия: v1)
+18:09:08 [INFO] argos.orangepi: OrangePiBridge init (I2C=bus0 UART=/dev/ttyS3 RS485=/dev/ttyS2)
+18:09:08 [INFO] argos.core: OrangePiBridge: OK (платформа=Windows)
+18:09:08 [INFO] argos.core: WebExplorer: OK (DuckDuckGo/Wikipedia/GitHub/arXiv)
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+18:09:11 [INFO] argos.lazarus: [Lazarus] AES-осколок создан: data/lazarus_shard.tar.gz.enc
+18:09:11 [INFO] argos.awa: AWA: LazarusProtocol инициализирован
+18:09:11 [INFO] argos.shadow_vision: [ShadowVision] Запущен (интервал 5s, модель yolov8n)
+18:09:11 [INFO] argos.awa: AWA: ShadowVision запущен
+18:09:11 [INFO] argos.awa: AWA: NeuralSwarm инициализирован
+18:09:11 [INFO] argos.awa: AWA: BrowserConduit инициализирован
+18:09:11 [INFO] argos.neural_swarm: [NeuralSwarm] Vega 11 Ollama уже онлайн на http://localhost:11436
+18:09:11 [INFO] argos.awa: AWA: AirSnitch инициализирован (автостарт выкл)
+18:09:11 [INFO] argos.awa: AWA-Core v1.0.0 init | policy=auto | cascade_depth=3
+18:09:11 [WARNING] argos.lazarus: ⚠️ [Lazarus] GIST_TOKEN не задан — create_soul_mirror пропущен.
+18:09:11 [INFO] argos.core: ContextDB: подключена к DialogContext
+18:09:11 [INFO] argos.core: AWA-Core: OK (Model Splitting активен)
+18:09:11 [INFO] argos.self_sustain: SelfSustain: запущен
+18:09:11 [INFO] argos.core: SelfSustain: OK
+18:09:11 [INFO] argos.core: HealthMonitor: OK
+18:09:11 [INFO] argos.core: AIFailover: OK
+18:09:11 [INFO] argos.integrator: ╔══════════════════════════════════════════════════════════╗
+18:09:11 [INFO] argos.integrator: ║             ARGOS UNIVERSAL INTEGRATOR v3.0              ║
+18:09:11 [INFO] argos.integrator: ╚══════════════════════════════════════════════════════════╝
+18:09:11 [INFO] argos.encryption: Encryption: ключ загружен из config/master.key
+18:09:11 [INFO] argos.gost: pygost не установлен — используется встроенная реализация (pip install pygost для эталонной)
+18:09:11 [WARNING] argos.integrator: Stub for GostKuznyechik: GostKuznyechik.__init__() missing 1 required positional argument: 'key'
+18:09:11 [WARNING] argos.integrator: Stub for ArgosZKPEngine: ArgosZKPEngine.__init__() missing 2 required positional arguments: 'node_id' and 'network_secret'
+18:09:11 [INFO] argos.integrator: ✅ security: 6 loaded
+18:09:11 [INFO] argos.gost_p2p: GostP2PSecurity: шифр=Кузнечик pygost=False
+18:09:12 [INFO] argos.orangepi: OrangePiBridge init (I2C=bus0 UART=/dev/ttyS3 RS485=/dev/ttyS2)
+C:\Users\AvA\debug\argoss\src\argos_integrator.py:87: UserWarning: [<src._argos_core_impl.ArgosCore object at 0x00000251D6B8E550>] XenArgoTransport: не удалось определить domid — транспорт отключён
+  return cls(*args, **kwargs)
+18:09:12 [INFO] argos.iot: IoTBridge инициализирован. Устройств: 0
+18:09:12 [WARNING] argos.integrator: Stub for Any: Any cannot be instantiated
+18:09:12 [INFO] argos.integrator: ✅ connectivity: 18 loaded
+   ⚠ 1 failed
+18:09:12 [INFO] argos.vector: VectorStore: ChromaDB активирован (data/chroma)
+18:09:12 [INFO] argos.grist: Grist: отключен через ARGOS_DISABLE_GRIST
+18:09:12 [INFO] argos.integrator: ✅ knowledge: 2 loaded
+18:09:12 [INFO] argos.integrator: ✅ factory: 3 loaded
+18:09:12 [INFO] argos.evolution: Evolution: загружено 1 записей
+18:09:12 [INFO] argos.self_model_v2: SelfModelV2 инициализирована
+18:09:12 [INFO] argos.integrator: ✅ mind: 3 loaded
+Loading weights:   0%|          | 0/103 [00:00<?, ?it/s]Loading weights: 100%|██████████| 103/103 [00:00<00:00, 5723.77it/s]
+[1mBertModel LOAD REPORT[0m from: sentence-transformers/all-MiniLM-L6-v2
+Key                     | Status     |  | 
+------------------------+------------+--+-
+embeddings.position_ids | UNEXPECTED |  | 
+
+[3mNotes:
+- UNEXPECTED[3m	:can be ignored when loading from different task/architecture; not ok if you expect identical arch.[0m
+18:09:12 [INFO] argos.integrator: ✅ quantum: 4 loaded
+18:09:12 [INFO] argos.integrator: ✅ vision: 2 loaded
+18:09:12 [INFO] argos.skills: Навык загружен: content_gen v1.3.0
+18:09:12 [INFO] argos.skills: Навык загружен: crypto_monitor v1.1.0
+18:09:12 [INFO] argos.skills: Навык загружен: evolution v2.1.0
+18:09:12 [INFO] argos.skills: Навык загружен: firmware_manager v1.0.0
+18:09:12 [INFO] argos.skills: Навык загружен: net_scanner v1.2.0
+18:09:12 [INFO] argos.skills: Навык загружен: scheduler v2.0.0
+18:09:12 [INFO] argos.skills: Навык загружен: weather v1.0.0
+18:09:12 [INFO] argos.skills: Навык загружен: web_scrapper v1.0.1
+18:09:12 [INFO] argos.integrator: ✅ skills: 8 loaded
+18:09:12 [INFO] argos.modules: Модуль загружен: system_monitor (src.modules.system_monitor_module)
+18:09:12 [INFO] argos.modules: Модуль загружен: vision (src.modules.vision_module)
+18:09:12 [INFO] argos.modules: Модуль загружен: voice (src.modules.voice_module)
+18:09:12 [INFO] argos.integrator: ✅ modules: 3 loaded
+18:09:12 [INFO] argos.integrator: ✅ interfaces: 4 loaded
+18:09:12 [INFO] argos.claude-templates: ╔══════════════════════════════════════════════════════════╗
+18:09:12 [INFO] argos.claude-templates: ║               CLAUDE TEMPLATES INTEGRATOR                ║
+18:09:12 [INFO] argos.claude-templates: ╚══════════════════════════════════════════════════════════╝
+18:09:13 [INFO] argos.claude-templates: 📦 Обнаружено компонентов: 695
+18:09:13 [INFO] argos.claude-templates:   └─ agents: 417
+18:09:13 [INFO] argos.claude-templates:   └─ commands: 276
+18:09:13 [INFO] argos.claude-templates:   └─ hooks: 0
+18:09:13 [INFO] argos.claude-templates:   └─ mcps: 0
+18:09:13 [INFO] argos.claude-templates:   └─ settings: 0
+18:09:13 [INFO] argos.claude-templates:   └─ skills: 2
+18:09:13 [INFO] argos.claude-templates: 🤖 Адаптация агентов: 417
+18:09:13 [INFO] argos.claude-templates: ⌨️ Адаптация команд: 276
+18:09:13 [INFO] argos.claude-templates: 🪝 Адаптация хуков: 0
+18:09:13 [INFO] argos.claude-templates: 🔗 Адаптация MCP: 0
+18:09:13 [INFO] argos.claude-templates: 
+════════════════════════════════════════════════════════════
+18:09:13 [INFO] argos.claude-templates: ══════════════ ИНТЕГРАЦИЯ ШАБЛОНОВ ЗАВЕРШЕНА ═══════════════
+18:09:13 [INFO] argos.claude-templates: ════════════════════════════════════════════════════════════
+18:09:13 [INFO] argos.claude-templates: 🤖 Агенты:    417
+18:09:13 [INFO] argos.claude-templates: ⌨️ Команды:   274
+18:09:13 [INFO] argos.claude-templates: 🪝 Хуки:      0
+18:09:13 [INFO] argos.claude-templates: 🔗 MCP:       0
+18:09:13 [INFO] argos.claude-templates: ════════════════════════════════════════════════════════════
+18:09:13 [INFO] argos.integrator: 
+════════════════════════════════════════════════════════════
+18:09:13 [INFO] argos.integrator: ═══════════════════ ИНТЕГРАЦИЯ ЗАВЕРШЕНА ═══════════════════
+18:09:13 [INFO] argos.integrator: ════════════════════════════════════════════════════════════
+18:09:13 [INFO] argos.integrator: ✅ security     —  6 loaded
+18:09:13 [INFO] argos.integrator: ✅ connectivity — 18 loaded | 1 failed
+18:09:13 [WARNING] argos.integrator:   ↳ connectivity fail: lora: invalid literal for int() with base 10: ''
+18:09:13 [INFO] argos.integrator: ✅ knowledge    —  2 loaded
+18:09:13 [INFO] argos.integrator: ✅ factory      —  3 loaded
+18:09:13 [INFO] argos.integrator: ✅ mind         —  3 loaded
+18:09:13 [INFO] argos.integrator: ✅ quantum      —  4 loaded
+18:09:13 [INFO] argos.integrator: ✅ vision       —  2 loaded
+18:09:13 [INFO] argos.integrator: ✅ skills       —  8 loaded
+18:09:13 [INFO] argos.integrator: ✅ modules      —  3 loaded
+18:09:13 [INFO] argos.integrator: ✅ interfaces   —  4 loaded
+18:09:13 [INFO] argos.integrator: ✅ claude-templates —  3 loaded
+18:09:13 [INFO] argos.integrator: ────────────────────────────────────────────────────────────
+18:09:13 [INFO] argos.integrator: Итого: 11/11 подсистем OK, 1 ошибок
+18:09:13 [INFO] argos.integrator: ════════════════════════════════════════════════════════════
+18:09:13 [INFO] argos.core: Integrator: 12 категорий подключено
+18:09:13 [INFO] argos.core:   └─ security: shield, gitguard, bootloader, lazarusprotocol, gostcipher...
+18:09:13 [INFO] argos.core:   └─ connectivity: p2p, telegram, whatsapp, slack, email...
+18:09:13 [INFO] argos.core:   └─ protocol: modbus, ble, zigbee, nfc
+18:09:13 [INFO] argos.core:   └─ knowledge: vector, grist
+18:09:13 [INFO] argos.core:   └─ factory: flasher, replicator, firmware
+18:09:13 [INFO] argos.core:   └─ mind: dreamer, evolution, self_model
+18:09:13 [INFO] argos.core:   └─ quantum: ibm, watson, logic, oracle
+18:09:13 [INFO] argos.core:   └─ vision: shadow, vision
+18:09:13 [INFO] argos.core:   └─ skill: content_gen, crypto_monitor, evolution, firmware_manager, net_scanner...
+18:09:13 [INFO] argos.core:   └─ module: system_monitor, vision, voice
+18:09:13 [INFO] argos.core:   └─ interface: gui, web, fastapi, shell
+18:09:13 [INFO] argos.core:   └─ claude: agents, commands, hooks
+18:09:14 [WARNING] argos.constitution: ARGOS mode => normal
+18:09:14 [INFO] argos.core: Constitution: ARGOS Constitution Report
+18:09:14 [INFO] argos.self_model_v2: SelfModelV2 инициализирована
+18:09:14 [INFO] argos.core: SelfModelV2: OK
+18:09:14 [INFO] argos.dreamer: Dreamer запущен (интервал=3600s)
+18:09:14 [INFO] argos.core: Dreamer: OK
+18:09:14 [INFO] argos.evolution: Evolution: загружено 1 записей
+18:09:14 [INFO] argos.core: EvolutionEngine: OK
+18:09:14 [INFO] argos.core: ArgosCore FINAL v2.0 инициализирован.
+18:09:14 [INFO] argos.main: [CORE] ArgosCore готов
+18:09:14 [INFO] argos.integrator: ╔══════════════════════════════════════════════════════════╗
+18:09:14 [INFO] argos.integrator: ║             ARGOS UNIVERSAL INTEGRATOR v3.0              ║
+18:09:14 [INFO] argos.integrator: ╚══════════════════════════════════════════════════════════╝
+18:09:14 [INFO] argos.encryption: Encryption: ключ загружен из config/master.key
+18:09:14 [WARNING] argos.integrator: Stub for GostKuznyechik: GostKuznyechik.__init__() missing 1 required positional argument: 'key'
+18:09:14 [WARNING] argos.integrator: Stub for ArgosZKPEngine: ArgosZKPEngine.__init__() missing 2 required positional arguments: 'node_id' and 'network_secret'
+18:09:14 [INFO] argos.integrator: ✅ security: 6 loaded
+18:09:14 [INFO] argos.gost_p2p: GostP2PSecurity: шифр=Кузнечик pygost=False
+18:09:14 [INFO] argos.orangepi: OrangePiBridge init (I2C=bus0 UART=/dev/ttyS3 RS485=/dev/ttyS2)
+18:09:14 [INFO] argos.iot: IoTBridge инициализирован. Устройств: 0
+18:09:14 [WARNING] argos.integrator: Stub for Any: Any cannot be instantiated
+18:09:14 [INFO] argos.integrator: ✅ connectivity: 18 loaded
+   ⚠ 1 failed
+18:09:14 [INFO] argos.vector: VectorStore: ChromaDB активирован (data/chroma)
+18:09:14 [INFO] argos.grist: Grist: отключен через ARGOS_DISABLE_GRIST
+18:09:14 [INFO] argos.integrator: ✅ knowledge: 2 loaded
+18:09:14 [INFO] argos.integrator: ✅ factory: 3 loaded
+18:09:14 [INFO] argos.evolution: Evolution: загружено 1 записей
+18:09:14 [INFO] argos.self_model_v2: SelfModelV2 инициализирована
+18:09:14 [INFO] argos.integrator: ✅ mind: 3 loaded
+18:09:14 [INFO] argos.integrator: ✅ quantum: 4 loaded
+18:09:14 [INFO] argos.integrator: ✅ vision: 2 loaded
+18:09:14 [INFO] argos.skills: Навык загружен: content_gen v1.3.0
+18:09:14 [INFO] argos.skills: Навык загружен: crypto_monitor v1.1.0
+18:09:14 [INFO] argos.skills: Навык загружен: evolution v2.1.0
+18:09:14 [INFO] argos.skills: Навык загружен: firmware_manager v1.0.0
+18:09:14 [INFO] argos.skills: Навык загружен: net_scanner v1.2.0
+18:09:14 [INFO] argos.skills: Навык загружен: scheduler v2.0.0
+18:09:14 [INFO] argos.skills: Навык загружен: weather v1.0.0
+18:09:14 [INFO] argos.skills: Навык загружен: web_scrapper v1.0.1
+18:09:14 [INFO] argos.integrator: ✅ skills: 8 loaded
+18:09:14 [INFO] argos.modules: Модуль загружен: system_monitor (src.modules.system_monitor_module)
+18:09:14 [INFO] argos.modules: Модуль загружен: vision (src.modules.vision_module)
+18:09:14 [INFO] argos.modules: Модуль загружен: voice (src.modules.voice_module)
+18:09:14 [INFO] argos.integrator: ✅ modules: 3 loaded
+18:09:14 [INFO] argos.integrator: ✅ interfaces: 4 loaded
+18:09:14 [INFO] argos.claude-templates: ╔══════════════════════════════════════════════════════════╗
+18:09:14 [INFO] argos.claude-templates: ║               CLAUDE TEMPLATES INTEGRATOR                ║
+18:09:14 [INFO] argos.claude-templates: ╚══════════════════════════════════════════════════════════╝
+18:09:15 [INFO] argos.claude-templates: 📦 Обнаружено компонентов: 695
+18:09:15 [INFO] argos.claude-templates:   └─ agents: 417
+18:09:15 [INFO] argos.claude-templates:   └─ commands: 276
+18:09:15 [INFO] argos.claude-templates:   └─ hooks: 0
+18:09:15 [INFO] argos.claude-templates:   └─ mcps: 0
+18:09:15 [INFO] argos.claude-templates:   └─ settings: 0
+18:09:15 [INFO] argos.claude-templates:   └─ skills: 2
+18:09:15 [INFO] argos.claude-templates: 🤖 Адаптация агентов: 417
+18:09:15 [INFO] argos.claude-templates: ⌨️ Адаптация команд: 276
+18:09:15 [INFO] argos.claude-templates: 🪝 Адаптация хуков: 0
+18:09:15 [INFO] argos.claude-templates: 🔗 Адаптация MCP: 0
+18:09:15 [INFO] argos.claude-templates: 
+════════════════════════════════════════════════════════════
+18:09:15 [INFO] argos.claude-templates: ══════════════ ИНТЕГРАЦИЯ ШАБЛОНОВ ЗАВЕРШЕНА ═══════════════
+18:09:15 [INFO] argos.claude-templates: ════════════════════════════════════════════════════════════
+18:09:15 [INFO] argos.claude-templates: 🤖 Агенты:    417
+18:09:15 [INFO] argos.claude-templates: ⌨️ Команды:   274
+18:09:15 [INFO] argos.claude-templates: 🪝 Хуки:      0
+18:09:15 [INFO] argos.claude-templates: 🔗 MCP:       0
+18:09:15 [INFO] argos.claude-templates: ════════════════════════════════════════════════════════════
+18:09:15 [INFO] argos.integrator: 
+════════════════════════════════════════════════════════════
+18:09:15 [INFO] argos.integrator: ═══════════════════ ИНТЕГРАЦИЯ ЗАВЕРШЕНА ═══════════════════
+18:09:15 [INFO] argos.integrator: ════════════════════════════════════════════════════════════
+18:09:15 [INFO] argos.integrator: ✅ security     —  6 loaded
+18:09:15 [INFO] argos.integrator: ✅ connectivity — 18 loaded | 1 failed
+18:09:15 [WARNING] argos.integrator:   ↳ connectivity fail: lora: invalid literal for int() with base 10: ''
+18:09:15 [INFO] argos.integrator: ✅ knowledge    —  2 loaded
+18:09:15 [INFO] argos.integrator: ✅ factory      —  3 loaded
+18:09:15 [INFO] argos.integrator: ✅ mind         —  3 loaded
+18:09:15 [INFO] argos.integrator: ✅ quantum      —  4 loaded
+18:09:15 [INFO] argos.integrator: ✅ vision       —  2 loaded
+18:09:15 [INFO] argos.integrator: ✅ skills       —  8 loaded
+18:09:15 [INFO] argos.integrator: ✅ modules      —  3 loaded
+18:09:15 [INFO] argos.integrator: ✅ interfaces   —  4 loaded
+18:09:15 [INFO] argos.integrator: ✅ claude-templates —  3 loaded
+18:09:15 [INFO] argos.integrator: ────────────────────────────────────────────────────────────
+18:09:15 [INFO] argos.integrator: Итого: 11/11 подсистем OK, 1 ошибок
+18:09:15 [INFO] argos.integrator: ════════════════════════════════════════════════════════════
+18:09:15 [INFO] argos.main: [INTEGRATOR] Подключено подсистем: 56
+18:09:16 [INFO] argos.main: [MCP] Endpoint доступен: http://127.0.0.1:8000/mcp
+18:09:16 [INFO] argos.main: [MCP] Watchdog активен: check каждые 10s
+18:09:16 [INFO] argos.main: [SERVER] Headless режим — только Telegram + P2P
+18:09:16 [INFO] argos.main: [TG] Telegram бот запущен
+18:09:16 [INFO] argos.main: [SERVER] Жду директив. Для остановки: CTRL+C или SIGTERM.
+18:09:16 [INFO] argos.vector: VectorStore: sentence-transformers модель загружена (sentence-transformers/all-MiniLM-L6-v2).
+Loading weights:   0%|          | 0/103 [00:00<?, ?it/s]Loading weights: 100%|██████████| 103/103 [00:00<00:00, 1287.52it/s]
+[1mBertModel LOAD REPORT[0m from: sentence-transformers/all-MiniLM-L6-v2
+Key                     | Status     |  | 
+------------------------+------------+--+-
+embeddings.position_ids | UNEXPECTED |  | 
+
+[3mNotes:
+- UNEXPECTED[3m	:can be ignored when loading from different task/architecture; not ok if you expect identical arch.[0m
+Loading weights:   0%|          | 0/103 [00:00<?, ?it/s]Loading weights: 100%|██████████| 103/103 [00:00<00:00, 4120.18it/s]
+[1mBertModel LOAD REPORT[0m from: sentence-transformers/all-MiniLM-L6-v2
+Key                     | Status     |  | 
+------------------------+------------+--+-
+embeddings.position_ids | UNEXPECTED |  | 
+
+[3mNotes:
+- UNEXPECTED[3m	:can be ignored when loading from different task/architecture; not ok if you expect identical arch.[0m
+18:09:21 [INFO] argos.vector: VectorStore: sentence-transformers модель загружена (sentence-transformers/all-MiniLM-L6-v2).
+18:09:24 [INFO] argos.vector: VectorStore: sentence-transformers модель загружена (sentence-transformers/all-MiniLM-L6-v2).
+C:\Users\AvA\debug\argoss\src\connectivity\telegram_bot.py:2393: RuntimeWarning: This package (`duckduckgo_search`) has been renamed to `ddgs`! Use `pip install ddgs` instead.
+  with DDGS() as ddgs:
+18:09:39 [INFO] argos.memory: Vector warmup: indexed 180 docs
+C:\Users\AvA\AppData\Local\Programs\Python\Python311\Lib\socket.py:833: ResourceWarning: unclosed <ssl.SSLSocket fd=5888, family=2, type=1, proto=0, laddr=('192.168.1.139', 56975), raddr=('188.227.59.182', 443)>
+  sock.settimeout(timeout)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+C:\Users\AvA\debug\argoss\src\connectivity\telegram_bot.py:2393: RuntimeWarning: This package (`duckduckgo_search`) has been renamed to `ddgs`! Use `pip install ddgs` instead.
+  with DDGS() as ddgs:
+C:\Users\AvA\debug\argoss\src\connectivity\telegram_bot.py:2393: RuntimeWarning: This package (`duckduckgo_search`) has been renamed to `ddgs`! Use `pip install ddgs` instead.
+  with DDGS() as ddgs:
+18:11:04 [INFO] argos.core: [Ollama] Проверяю доступность: http://localhost:11434/api/tags
+18:11:04 [INFO] argos.core: [Ollama] ✅ Уже запущен (http://localhost:11434/api/tags)
+18:11:04 [INFO] argos.core: [Ollama] Запрос: модель=llama3:8b
+18:11:45 [WARNING] argos.alerts: ALERT: 💾 RAM критически заполнена: 88.8% (порог 85.0%)
+18:11:45 [WARNING] argos.core: ALERT: ⚠️ ARGOS ALERT
+💾 RAM критически заполнена: 88.8% (порог 85.0%)
+18:11:49 [WARNING] argos.core: [Ollama SDK] Таймаут 45s — модель llama3:8b не ответила, пропускаю
+18:12:01 [WARNING] argos.constitution: ARGOS mode => low_power
+18:12:29 [INFO] argos.core: [Ollama] Проверяю доступность: http://localhost:11434/api/tags
+18:12:29 [INFO] argos.core: [Ollama] ✅ Уже запущен (http://localhost:11434/api/tags)
+18:12:29 [INFO] argos.core: [Ollama] Запрос: модель=llama3:8b
+18:13:14 [WARNING] argos.core: [Ollama SDK] Таймаут 45s — модель llama3:8b не ответила, пропускаю
+18:14:26 [WARNING] argos.alerts: ALERT: 💿 Диск почти заполнен: 94.7% (свободно 5GB)
+18:14:26 [WARNING] argos.core: ALERT: ⚠️ ARGOS ALERT
+💿 Диск почти заполнен: 94.7% (свободно 5GB)
+C:\Users\AvA\debug\argoss\src\skills\ai_coder.py:55: ResourceWarning: unclosed file <_io.TextIOWrapper name='data/ai_coder_history.json' mode='r' encoding='utf-8'>
+  return json.load(open(HISTORY_FILE, encoding="utf-8"))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+18:17:06 [WARNING] argos.alerts: ALERT: 💾 RAM критически заполнена: 90.2% (порог 85.0%)
+18:17:06 [WARNING] argos.core: ALERT: ⚠️ ARGOS ALERT
+💾 RAM критически заполнена: 90.2% (порог 85.0%)
+qiskit_runtime_service.__init__:WARNING:2026-04-04 18:17:35,610: Instance was not set at service instantiation. Free and trial plan instances will be prioritized. Based on the following filters: (tags: None, region: us-east, eu-de), and available plans: (open), the available account instances are: open-instance. If you need a specific instance set it explicitly either by using a saved account with a saved default instance or passing it in directly to QiskitRuntimeService().
+qiskit_runtime_service.backends:WARNING:2026-04-04 18:17:35,610: Loading instance: open-instance, plan: open
+18:17:37 [INFO] argos.ibm_quantum: IBM Quantum: подключён, 3 backend(s)
+qiskit_runtime_service.backends:WARNING:2026-04-04 18:17:40,472: Loading instance: open-instance, plan: open

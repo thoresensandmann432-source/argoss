@@ -1,0 +1,48 @@
+# ... (твои импорты и цветовая схема _C сохраняются полностью) ...
+import customtkinter as ctk
+import platform
+from datetime import datetime
+
+class ArgosGUI(ctk.CTk):
+    def __init__(self, core, admin, flasher, location=""):
+        super().__init__()
+        self.core = core
+        # ... (инициализация из твоего кода) ...
+
+    def _build_sidebar(self):
+        # ... (логотип, квант состояние) ...
+        
+        # ── [ДОРАБОТКА] ПАНЕЛЬ GPU SWARM ──
+        self._section("🧠  NEURAL SWARM (GPU)")
+        self.gpu_primary = _MetricBar(self.sidebar, "RX580")
+        self.gpu_primary.pack(fill="x", padx=12, pady=2)
+        self.gpu_secondary = _MetricBar(self.sidebar, "RX560")
+        self.gpu_secondary.pack(fill="x", padx=12, pady=2)
+
+        # ── [ДОРАБОТКА] КНОПКИ БЕССМЕРТИЯ ──
+        self._section("🧬  IMMORTALITY (v2.5)")
+        self._btn("🛡️ Выполнить репликацию", self._run_immortality, 
+                  fg_color="#1A3A6A", hover_color=_C["cyan"])
+        self._btn("☁️ Синхрон. GDrive", lambda: self._send_text("windows gdrive sync"))
+        self._btn("🖥️ Статус Хост-Бридж", lambda: self._send_text("windows Get-Service ArgosBridge"))
+
+        # ... (остальные кнопки и секции из твоего кода) ...
+
+    def _run_immortality(self):
+        self._append_system("🧬 Запуск протокола Lazarus: создание осколка души...\n")
+        threading.Thread(target=self._immortality_task, daemon=True).start()
+
+    def _immortality_task(self):
+        shard = self.core.lazarus.create_shard()
+        self.core.gdrive.upload(shard)
+        self.after(0, lambda: self._append_system(f"✅ Осколок {shard} успешно загружен в Сейф.\n"))
+
+    def _update_metrics(self):
+        try:
+            import psutil
+            self.bar_cpu.update(psutil.cpu_percent())
+            self.bar_ram.update(psutil.virtual_memory().percent)
+            # Здесь Аргос опрашивает RX 580/560 через WinBridge или локально
+            # self.gpu_primary.update(gpu_load_1)
+            # self.gpu_secondary.update(gpu_load_2)
+        except: pass

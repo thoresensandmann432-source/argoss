@@ -1,0 +1,10 @@
+{
+  "dependencies": {
+    "huggingface-mcp-server": "^1.0.26"
+  },
+  "_npx": {
+    "packages": [
+      "huggingface-mcp-server"
+    ]
+  }
+}

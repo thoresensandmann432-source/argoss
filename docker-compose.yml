@@ -1,0 +1,108 @@
+version: "3.9"
+
+services:
+  argos:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: argos-universal:2.1.0
+    container_name: argos_core
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      ARGOS_NO_GUI: "1"
+      ARGOS_LOG_LEVEL: "INFO"
+      OLLAMA_HOST: "http://host.docker.internal:11434"
+      MQTT_HOST: "mosquitto"
+      MQTT_PORT: "1883"
+    ports:
+      - "8080:8080"
+      - "7070:7070"
+      - "7071:7071/udp"
+    volumes:
+      - argos_data:/app/data
+      - argos_logs:/app/logs
+      - argos_config:/app/config
+      - ~/.ollama:/root/.ollama:ro
+      - /sys/class/gpio:/sys/class/gpio
+      - /sys/bus/w1:/sys/bus/w1:ro
+    devices:
+      - /dev/ttyUSB0:/dev/ttyUSB0
+      - /dev/ttyUSB1:/dev/ttyUSB1
+      - /dev/ttyS0:/dev/ttyS0
+      - /dev/ttyS3:/dev/ttyS3
+      - /dev/i2c-0:/dev/i2c-0
+      - /dev/i2c-1:/dev/i2c-1
+    group_add:
+      - dialout
+      - i2c
+      - audio
+    cap_add:
+      - SYS_RAWIO
+    networks:
+      - argos_net
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import psutil; psutil.cpu_percent()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "4.0"
+          memory: 4G
+
+  mosquitto:
+    image: eclipse-mosquitto:2.0
+    container_name: argos_mqtt
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./docker/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_logs:/mosquitto/log
+    networks:
+      - argos_net
+    healthcheck:
+      test: ["CMD", "mosquitto_sub", "-t", "$$SYS/#", "-C", "1", "-i", "hc", "-W", "3"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  redis:
+    image: redis:7-alpine
+    container_name: argos_redis
+    restart: unless-stopped
+    command: redis-server --save 60 1 --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - argos_net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  argos_data:
+  argos_logs:
+  argos_config:
+  mosquitto_data:
+  mosquitto_logs:
+  redis_data:
+
+networks:
+  argos_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/24

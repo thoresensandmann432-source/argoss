@@ -1,0 +1,31 @@
+# ARGOS IoT Hub — зависимости
+# pip install -r requirements.iot.txt
+
+# ── Все протоколы ─────────────────────────────────────
+pyserial>=3.5            # UART: LoRa, SIM800C, RS-485, Modbus RTU
+paho-mqtt>=2.0.0         # MQTT: Zigbee, Tasmota, общий брокер
+
+# ── Беспроводные ─────────────────────────────────────
+bleak>=0.21.0            # BLE
+
+# ── Промышленные ─────────────────────────────────────
+pymodbus>=3.5.0          # Modbus RTU/TCP/ASCII
+
+# ── Датчики ───────────────────────────────────────────
+smbus2>=0.4.3            # I2C (BME280, SHT30, ADS1115...)
+w1thermsensor>=2.3.0     # 1-Wire DS18B20
+
+# ── NFC ───────────────────────────────────────────────
+nfcpy>=1.0.4             # ACR122U, PN532
+mfrc522>=0.0.7           # RC522 (RPi SPI)
+
+# ── Умный дом ────────────────────────────────────────
+requests>=2.31.0         # Home Assistant REST
+
+# ── IPC ───────────────────────────────────────────────
+redis>=5.0.0             # Redis Pub/Sub IPC (опционально)
+websockets>=14.0         # WebSocket IPC
+
+# ── RPi ──────────────────────────────────────────────
+# RPi.GPIO>=0.7.1        # GPIO: только на Raspberry Pi
+# gpiozero>=2.0.1        # GPIO: альтернатива RPi.GPIO

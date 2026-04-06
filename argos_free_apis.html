@@ -1,0 +1,716 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>ARGOS · Free APIs Catalogue</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet"/>
+<style>
+:root{
+  --void-black:#050508;--void-dark:#0A0A0F;--void-mid:#12121A;--void-card:#0F0F18;
+  --neon-cyan:#00D4FF;--neon-blue:#4D9FFF;--soft-blue:#9DC4FF;
+  --neon-green:#00FF9D;--neon-red:#FF3C5A;--neon-yellow:#FFD700;--neon-purple:#BF6AFF;
+  --border:rgba(0,212,255,.15);--text-dim:rgba(157,196,255,.55);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--void-black);color:#fff;font-family:'Inter',sans-serif;min-height:100vh}
+body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:999;
+  background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.05) 2px,rgba(0,0,0,.05) 4px)}
+body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+  background-image:linear-gradient(rgba(0,212,255,.03) 1px,transparent 1px),
+  linear-gradient(90deg,rgba(0,212,255,.03) 1px,transparent 1px);background-size:60px 60px}
+::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:var(--void-dark)}
+::-webkit-scrollbar-thumb{background:var(--neon-cyan);border-radius:2px}
+
+.wrap{position:relative;z-index:1;max-width:1400px;margin:0 auto;padding:24px}
+
+/* ── HEADER ── */
+.hdr{display:flex;align-items:center;justify-content:space-between;padding-bottom:20px;border-bottom:1px solid var(--border);margin-bottom:24px}
+.hdr-logo{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:20px;letter-spacing:.15em;color:var(--neon-cyan);text-shadow:0 0 20px rgba(0,212,255,.6)}
+.hdr-sub{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text-dim);letter-spacing:.2em;margin-top:2px}
+.hdr-stat{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--soft-blue)}
+.hdr-stat span{color:var(--neon-cyan)}
+
+/* ── SEARCH + FILTERS ── */
+.controls{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px;align-items:center}
+.search-wrap{flex:1;min-width:220px;position:relative}
+.search-wrap input{
+  width:100%;background:var(--void-card);border:1px solid var(--border);border-radius:6px;
+  padding:10px 14px 10px 36px;color:#fff;font-family:'JetBrains Mono',monospace;font-size:12px;
+  outline:none;transition:border-color .2s
+}
+.search-wrap input:focus{border-color:rgba(0,212,255,.4)}
+.search-wrap input::placeholder{color:var(--text-dim)}
+.search-icon{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--text-dim);font-size:13px}
+.filters{display:flex;gap:8px;flex-wrap:wrap}
+.filter-btn{
+  padding:7px 14px;border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:10px;
+  letter-spacing:.1em;border:1px solid var(--border);background:transparent;color:var(--text-dim);
+  cursor:pointer;transition:all .2s;white-space:nowrap
+}
+.filter-btn:hover{border-color:rgba(0,212,255,.3);color:var(--soft-blue)}
+.filter-btn.active{border-color:var(--neon-cyan);color:var(--neon-cyan);background:rgba(0,212,255,.08)}
+.filter-btn.argos-only{border-color:rgba(0,255,157,.3);color:var(--neon-green)}
+.filter-btn.argos-only.active{background:rgba(0,255,157,.1)}
+
+/* ── LEGEND ── */
+.legend{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text-dim);letter-spacing:.08em}
+.leg{display:flex;align-items:center;gap:5px}
+
+/* ── GRID ── */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:14px}
+
+/* ── API CARD ── */
+.api-card{
+  background:var(--void-card);border:1px solid var(--border);border-radius:8px;
+  padding:16px;display:flex;flex-direction:column;gap:10px;
+  position:relative;overflow:hidden;transition:border-color .25s,transform .2s;cursor:default
+}
+.api-card:hover{border-color:rgba(0,212,255,.35);transform:translateY(-1px)}
+.api-card::before{content:'';position:absolute;inset:0;
+  background:linear-gradient(135deg,rgba(0,212,255,.025) 0%,transparent 60%);pointer-events:none}
+.api-card.argos-hot{border-color:rgba(0,255,157,.2)}
+.api-card.argos-hot::after{
+  content:'';position:absolute;top:0;right:0;width:3px;height:100%;
+  background:linear-gradient(180deg,var(--neon-green),transparent)
+}
+
+/* card top */
+.card-top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+.card-name{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:13px;color:#fff;letter-spacing:.04em}
+.card-tags{display:flex;gap:5px;flex-wrap:wrap;flex-shrink:0}
+.tag{padding:2px 7px;border-radius:3px;font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.1em;font-weight:600}
+.tag.free{background:rgba(0,255,157,.12);color:var(--neon-green);border:1px solid rgba(0,255,157,.2)}
+.tag.key{background:rgba(0,212,255,.1);color:var(--neon-cyan);border:1px solid rgba(0,212,255,.2)}
+.tag.nokey{background:rgba(77,159,255,.1);color:var(--neon-blue);border:1px solid rgba(77,159,255,.2)}
+.tag.argos{background:rgba(0,255,157,.15);color:var(--neon-green);border:1px solid rgba(0,255,157,.3)}
+.tag.hot{background:rgba(255,215,0,.12);color:var(--neon-yellow);border:1px solid rgba(255,215,0,.25)}
+.tag.paid{background:rgba(255,60,90,.1);color:var(--neon-red);border:1px solid rgba(255,60,90,.2)}
+
+/* desc */
+.card-desc{font-size:12px;color:rgba(255,255,255,.65);line-height:1.55}
+.card-meta{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.cat-badge{
+  font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.12em;
+  padding:3px 8px;border-radius:3px;border:1px solid var(--border);color:var(--text-dim)
+}
+.card-url{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--neon-blue);
+  text-decoration:none;letter-spacing:.03em;transition:color .2s}
+.card-url:hover{color:var(--neon-cyan);text-decoration:underline}
+.card-note{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--neon-yellow);
+  background:rgba(255,215,0,.07);border:1px solid rgba(255,215,0,.15);
+  border-radius:3px;padding:4px 8px;letter-spacing:.05em}
+.no-results{grid-column:1/-1;text-align:center;padding:60px 20px;
+  font-family:'JetBrains Mono',monospace;color:var(--text-dim);letter-spacing:.1em}
+
+/* ── COUNT BAR ── */
+.count-bar{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-dim);
+  margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.count-bar span{color:var(--neon-cyan)}
+
+@media(max-width:600px){.grid{grid-template-columns:1fr}.controls{flex-direction:column}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="hdr">
+    <div>
+      <div class="hdr-logo">ARGOS · FREE APIs</div>
+      <div class="hdr-sub">АКТУАЛЬНЫЙ КАТАЛОГ 2025–2026 · ОТФИЛЬТРОВАНО ДЛЯ ARGOS OS</div>
+    </div>
+    <div class="hdr-stat">всего: <span id="total-count">0</span> APIs · показано: <span id="shown-count">0</span></div>
+  </div>
+
+  <div class="controls">
+    <div class="search-wrap">
+      <span class="search-icon">⌕</span>
+      <input type="text" id="search" placeholder="поиск по названию, описанию..."/>
+    </div>
+    <div class="filters">
+      <button class="filter-btn active" data-cat="all">ВСЕ</button>
+      <button class="filter-btn argos-only" data-cat="argos">⚡ ДЛЯ ARGOS</button>
+      <button class="filter-btn" data-cat="AI / LLM">AI / LLM</button>
+      <button class="filter-btn" data-cat="NLP">NLP</button>
+      <button class="filter-btn" data-cat="Speech">РЕЧЬ</button>
+      <button class="filter-btn" data-cat="Vision">VISION</button>
+      <button class="filter-btn" data-cat="Weather">ПОГОДА</button>
+      <button class="filter-btn" data-cat="Finance">ФИНАНСЫ</button>
+      <button class="filter-btn" data-cat="Maps">КАРТЫ</button>
+      <button class="filter-btn" data-cat="Data">ДАННЫЕ</button>
+      <button class="filter-btn" data-cat="Dev">DEV</button>
+      <button class="filter-btn" data-cat="Media">МЕДИА</button>
+      <button class="filter-btn" data-cat="Misc">MISC</button>
+    </div>
+  </div>
+
+  <div class="legend">
+    <div class="leg"><span class="tag free">FREE</span> бесплатный tier</div>
+    <div class="leg"><span class="tag nokey">NO KEY</span> без регистрации</div>
+    <div class="leg"><span class="tag key">API KEY</span> нужен ключ (бесплатно)</div>
+    <div class="leg"><span class="tag argos">ARGOS ✓</span> интегрируется в модуль</div>
+    <div class="leg"><span class="tag hot">HOT</span> рекомендуется</div>
+    <div class="leg" style="color:rgba(0,255,157,.4)">▌ зелёная полоса = приоритет для ARGOS</div>
+  </div>
+
+  <div class="count-bar">Показано: <span id="shown-count2">0</span> из <span id="total-count2">0</span></div>
+
+  <div class="grid" id="grid"></div>
+
+</div>
+
+<script>
+const APIs = [
+  // ══════════════════ AI / LLM ══════════════════
+  {
+    name:"Google Gemini API",cat:"AI / LLM",argos:true,hot:true,auth:"key",
+    url:"https://ai.google.dev",
+    desc:"Мультимодальный LLM от Google — текст, код, изображения, видео. Бесплатный tier: 15 RPM, 1M токенов/мин. Gemini 1.5 Flash — бесплатно без лимита на сутки.",
+    note:"Заменяет WatsonX! Интеграция в watson_bridge.py",
+    free:true
+  },
+  {
+    name:"Hugging Face Inference API",cat:"AI / LLM",argos:true,hot:true,auth:"key",
+    url:"https://huggingface.co/inference-api",
+    desc:"Тысячи моделей: LLM, NLP, CV, Audio, Embeddings — всё через один API. Бесплатный tier без карты.",
+    note:"Уже используется для VectorStore (MiniLM). Расширить на LLM fallback.",
+    free:true
+  },
+  {
+    name:"Cohere API",cat:"AI / LLM",argos:true,hot:true,auth:"key",
+    url:"https://cohere.com",
+    desc:"LLM для NLP задач: классификация, генерация, эмбеддинги, RAG. Trial key бесплатно, production — pay-as-you-go.",
+    note:"Отличный fallback вместо WatsonX для AWA-Core",
+    free:true
+  },
+  {
+    name:"Mistral AI API",cat:"AI / LLM",argos:true,hot:true,auth:"key",
+    url:"https://console.mistral.ai",
+    desc:"Mistral Large, Small, Codestral. Быстрые open-weight модели. Бесплатный tier: La Plateforme с экспериментальными моделями.",
+    note:"Хороший fallback для Ollama при офлайн недоступности",
+    free:true
+  },
+  {
+    name:"Anthropic Claude API",cat:"AI / LLM",argos:false,hot:false,auth:"key",
+    url:"https://console.anthropic.com",
+    desc:"Claude Sonnet/Haiku/Opus. Нет бесплатного tier, но дешевле GPT-4 при том же качестве. Haiku — самый дешёвый.",
+    free:false
+  },
+  {
+    name:"OpenAI API",cat:"AI / LLM",argos:false,hot:false,auth:"key",
+    url:"https://platform.openai.com",
+    desc:"GPT-4o, GPT-4o-mini, Whisper, DALL-E. Бесплатного tier нет — только $5 стартовый кредит при регистрации.",
+    free:false
+  },
+  {
+    name:"Cloudflare Workers AI",cat:"AI / LLM",argos:true,hot:true,auth:"key",
+    url:"https://developers.cloudflare.com/workers-ai/",
+    desc:"Serverless inference: LLM, embeddings, STT, image classification, translation. 10,000 neurons/day бесплатно.",
+    note:"Хорош для _init_ai_failover как cloud fallback",
+    free:true
+  },
+  {
+    name:"Groq API",cat:"AI / LLM",argos:true,hot:true,auth:"key",
+    url:"https://console.groq.com",
+    desc:"Llama 3, Mixtral, Gemma на LPU — скорость до 750 токенов/с. Бесплатный tier: 30 RPM, 14,400 req/day.",
+    note:"Идеальный быстрый fallback для Ollama",
+    free:true
+  },
+  {
+    name:"Together AI",cat:"AI / LLM",argos:true,hot:false,auth:"key",
+    url:"https://api.together.xyz",
+    desc:"Llama 3, Mistral, Qwen и др. через один API. $1 стартовый кредит бесплатно.",
+    free:true
+  },
+  {
+    name:"Perplexity AI API",cat:"AI / LLM",argos:false,hot:false,auth:"key",
+    url:"https://docs.perplexity.ai",
+    desc:"Sonar-модели с real-time поиском. Нет бесплатного tier, но $5 стартовый кредит.",
+    free:false
+  },
+
+  // ══════════════════ NLP ══════════════════
+  {
+    name:"NLP Cloud",cat:"NLP",argos:true,hot:true,auth:"key",
+    url:"https://nlpcloud.com",
+    desc:"spaCy + Transformers API: NER, sentiment, классификация, суммаризация. Бесплатно до 1 000 req/мес.",
+    note:"Расширение web_learn модуля — анализ найденного текста",
+    free:true
+  },
+  {
+    name:"Perspective API (Google)",cat:"NLP",argos:true,hot:false,auth:"key",
+    url:"https://perspectiveapi.com",
+    desc:"Определяет токсичность, оскорбления, угрозы в тексте. Бесплатно для некоммерческого использования.",
+    note:"Фильтрация входных данных в AWA-Core",
+    free:true
+  },
+  {
+    name:"LibreTranslate",cat:"NLP",argos:true,hot:true,auth:"nokey",
+    url:"https://libretranslate.com",
+    desc:"Open-source машинный перевод. Self-hosted или публичный API без ключа (есть rate limit). Поддержка 30+ языков.",
+    note:"Мультиязычность для ARGOS без внешних зависимостей",
+    free:true
+  },
+  {
+    name:"ParallelDots AI",cat:"NLP",argos:true,hot:false,auth:"key",
+    url:"https://www.paralleldots.com/apis",
+    desc:"Sentiment analysis, emotion detection, intent classification, Named Entity Recognition. Бесплатно 1,000 API calls/day.",
+    free:true
+  },
+  {
+    name:"Meaningcloud",cat:"NLP",argos:false,hot:false,auth:"key",
+    url:"https://www.meaningcloud.com",
+    desc:"Многоязычный NLP: тематика, сентимент, суммаризация, классификация. Бесплатно 20,000 req/мес.",
+    free:true
+  },
+
+  // ══════════════════ SPEECH ══════════════════
+  {
+    name:"Deepgram",cat:"Speech",argos:true,hot:true,auth:"key",
+    url:"https://deepgram.com",
+    desc:"STT real-time + batch. Timestamps, суммаризация, sentiment, diarization. $200 кредит при регистрации без карты.",
+    note:"Прямое подключение к _init_voice() модулю",
+    free:true
+  },
+  {
+    name:"AssemblyAI",cat:"Speech",argos:true,hot:true,auth:"key",
+    url:"https://assemblyai.com",
+    desc:"Транскрипция, speaker diarization, topic detection, sentiment из аудио/видео. Бесплатный tier: $50 кредит.",
+    note:"Расширение voice/vision модулей ARGOS",
+    free:true
+  },
+  {
+    name:"OpenAI Whisper (self-hosted)",cat:"Speech",argos:true,hot:true,auth:"nokey",
+    url:"https://github.com/openai/whisper",
+    desc:"Бесплатная open-source STT модель от OpenAI. Self-hosted через Ollama или напрямую. Работает офлайн!",
+    note:"Уже запускается через Ollama — проверить whisper модель",
+    free:true
+  },
+  {
+    name:"ElevenLabs API",cat:"Speech",argos:false,hot:false,auth:"key",
+    url:"https://elevenlabs.io",
+    desc:"TTS высокого качества, клонирование голоса. Бесплатно 10,000 символов/мес.",
+    free:true
+  },
+  {
+    name:"Coqui TTS (self-hosted)",cat:"Speech",argos:true,hot:false,auth:"nokey",
+    url:"https://github.com/coqui-ai/TTS",
+    desc:"Open-source TTS engine, работает офлайн. 17+ языков включая русский.",
+    note:"Локальный TTS для _init_voice() без внешних запросов",
+    free:true
+  },
+
+  // ══════════════════ VISION ══════════════════
+  {
+    name:"Roboflow Universe",cat:"Vision",argos:true,hot:true,auth:"key",
+    url:"https://universe.roboflow.com",
+    desc:"10,000+ pre-trained CV моделей. Object detection, classification, segmentation. Бесплатно 10,000 inferences/мес.",
+    note:"Расширение _init_vision() — object detection без обучения",
+    free:true
+  },
+  {
+    name:"Google Cloud Vision API",cat:"Vision",argos:true,hot:false,auth:"key",
+    url:"https://cloud.google.com/vision",
+    desc:"OCR, face/object/landmark detection, safe search, label detection. $300 кредит при регистрации.",
+    free:true
+  },
+  {
+    name:"DeepAI API",cat:"Vision",argos:false,hot:false,auth:"key",
+    url:"https://deepai.org/machine-learning-api",
+    desc:"Image generation (Stable Diffusion), colorization, style transfer, upscaling. Бесплатный tier доступен.",
+    free:true
+  },
+  {
+    name:"Remove.bg API",cat:"Vision",argos:false,hot:false,auth:"key",
+    url:"https://www.remove.bg/api",
+    desc:"Удаление фона с изображений. 50 API calls/мес бесплатно.",
+    free:true
+  },
+  {
+    name:"Imagga",cat:"Vision",argos:false,hot:false,auth:"key",
+    url:"https://imagga.com",
+    desc:"Image tagging, recognition, color analysis, NSFW detection. Бесплатно 1,000 req/мес.",
+    free:true
+  },
+
+  // ══════════════════ WEATHER ══════════════════
+  {
+    name:"Open-Meteo",cat:"Weather",argos:true,hot:true,auth:"nokey",
+    url:"https://open-meteo.com",
+    desc:"Бесплатный open-source weather API. Без ключа! 10,000 req/day. Прогноз 14 дней, исторические данные, 100+ переменных.",
+    note:"Лучший выбор для _init_iot() / HomeAssistant модуля",
+    free:true
+  },
+  {
+    name:"OpenWeatherMap",cat:"Weather",argos:true,hot:true,auth:"key",
+    url:"https://openweathermap.org/api",
+    desc:"Погода для 200,000+ городов, прогноз, алерты, геокодинг. Бесплатно: 60 calls/мин, 1,000 calls/day.",
+    note:"Уже известен — добавить в HomeAssistant модуль",
+    free:true
+  },
+  {
+    name:"WeatherAPI.com",cat:"Weather",argos:false,hot:false,auth:"key",
+    url:"https://www.weatherapi.com",
+    desc:"Current, forecast, historical, astronomy, sports. Бесплатно: 1,000,000 req/мес.",
+    free:true
+  },
+  {
+    name:"wttr.in",cat:"Weather",argos:true,hot:false,auth:"nokey",
+    url:"https://wttr.in/:help",
+    desc:"Погода в curl/JSON без ключа и регистрации. wttr.in/Moscow?format=j1 — мгновенно.",
+    note:"Простейшая интеграция для быстрых weather-запросов",
+    free:true
+  },
+
+  // ══════════════════ FINANCE ══════════════════
+  {
+    name:"Alpha Vantage",cat:"Finance",argos:true,hot:true,auth:"key",
+    url:"https://www.alphavantage.co",
+    desc:"Акции, форекс, крипто, commodities, технические индикаторы. Бесплатно: 25 req/day, 5 req/мин.",
+    note:"Финансовый модуль ARGOS — real-time market data",
+    free:true
+  },
+  {
+    name:"CoinGecko API",cat:"Finance",argos:true,hot:true,auth:"nokey",
+    url:"https://www.coingecko.com/api/documentation",
+    desc:"Крипто данные — 10,000+ монет. Цены, объёмы, маркет-кап. Demo tier без ключа: 30 calls/мин.",
+    note:"Мониторинг крипто для IoT/SmartSystems",
+    free:true
+  },
+  {
+    name:"Yahoo Finance (unofficial)",cat:"Finance",argos:true,hot:false,auth:"nokey",
+    url:"https://pypi.org/project/yfinance/",
+    desc:"Python библиотека yfinance — акции, ETF, фьючерсы без ключа. Используется в тысячах проектов.",
+    note:"pip install yfinance — без API ключа",
+    free:true
+  },
+  {
+    name:"Fixer.io",cat:"Finance",argos:false,hot:false,auth:"key",
+    url:"https://fixer.io",
+    desc:"Форекс курсы 170+ валют. Бесплатно: 100 req/мес (базовый план устарел — проверь).",
+    free:true
+  },
+  {
+    name:"ExchangeRate-API",cat:"Finance",argos:true,hot:false,auth:"key",
+    url:"https://www.exchangerate-api.com",
+    desc:"Конвертация валют, 160+ валют. Бесплатно 1,500 req/мес.",
+    note:"Для мультивалютных расчётов в ARGOS",
+    free:true
+  },
+  {
+    name:"CoinMarketCap API",cat:"Finance",argos:false,hot:false,auth:"key",
+    url:"https://coinmarketcap.com/api/",
+    desc:"Крипто данные — prices, volume, market cap. Basic план: 10,000 req/мес бесплатно.",
+    free:true
+  },
+
+  // ══════════════════ MAPS / GEO ══════════════════
+  {
+    name:"OpenStreetMap / Nominatim",cat:"Maps",argos:true,hot:true,auth:"nokey",
+    url:"https://nominatim.org",
+    desc:"Геокодинг и обратный геокодинг без ключа. Open-source, можно self-host. 1 req/s публичный сервер.",
+    note:"Геолокация для HomeAssistant, IoT, Smart Systems",
+    free:true
+  },
+  {
+    name:"ipapi",cat:"Maps",argos:true,hot:false,auth:"nokey",
+    url:"https://ipapi.co",
+    desc:"IP-геолокация без ключа. Страна, город, координаты, timezone, ISP. 1,000 req/day бесплатно.",
+    note:"Определение местоположения для context-aware ARGOS",
+    free:true
+  },
+  {
+    name:"ip-api.com",cat:"Maps",argos:true,hot:true,auth:"nokey",
+    url:"http://ip-api.com/json",
+    desc:"IP геолокация совсем без ключа и регистрации. JSON ответ мгновенно. 45 req/мин.",
+    note:"curl http://ip-api.com/json — мгновенная интеграция",
+    free:true
+  },
+  {
+    name:"Google Maps API",cat:"Maps",argos:false,hot:false,auth:"key",
+    url:"https://mapsplatform.google.com",
+    desc:"Карты, геокодинг, маршруты, Places. Demo key без карты для прототипов. $200/мес бесплатного кредита.",
+    free:true
+  },
+  {
+    name:"MapTiler",cat:"Maps",argos:false,hot:false,auth:"key",
+    url:"https://www.maptiler.com/cloud/geocoding/",
+    desc:"Геокодинг, векторные карты. Бесплатно: 100,000 tile req/мес.",
+    free:true
+  },
+
+  // ══════════════════ DATA / SEARCH ══════════════════
+  {
+    name:"DuckDuckGo Search (unofficial)",cat:"Data",argos:true,hot:true,auth:"nokey",
+    url:"https://pypi.org/project/duckduckgo-search/",
+    desc:"Python библиотека duckduckgo_search без ключа. Уже используется в web_learn модуле ARGOS!",
+    note:"✓ Уже в ARGOS web_learn — обновить до последней версии",
+    free:true
+  },
+  {
+    name:"SerpAPI",cat:"Data",argos:true,hot:true,auth:"key",
+    url:"https://serpapi.com",
+    desc:"Google, Bing, Baidu, DuckDuckGo, YouTube results. Бесплатно 100 searches/мес.",
+    note:"✓ Уже подключён (backend=serpapi) в ARGOS!",
+    free:true
+  },
+  {
+    name:"Brave Search API",cat:"Data",argos:true,hot:true,auth:"key",
+    url:"https://brave.com/search/api/",
+    desc:"Privacy-first поисковик с API. Бесплатно 2,000 req/мес. Без трекинга.",
+    note:"Замена/дополнение SerpAPI — privacy-friendly",
+    free:true
+  },
+  {
+    name:"Wikipedia API",cat:"Data",argos:true,hot:true,auth:"nokey",
+    url:"https://en.wikipedia.org/w/api.php",
+    desc:"Полный доступ к Wikipedia без ключа. Поиск, статьи, суммари. Неограниченно (разумно).",
+    note:"Расширение web_learn — базы знаний для AWA-Core",
+    free:true
+  },
+  {
+    name:"NewsAPI",cat:"Data",argos:true,hot:false,auth:"key",
+    url:"https://newsapi.org",
+    desc:"Новости из 30,000+ источников. Бесплатно: 100 req/day (developer plan).",
+    note:"Модуль curiosity — мониторинг новостей",
+    free:true
+  },
+  {
+    name:"The Guardian API",cat:"Data",argos:true,hot:false,auth:"key",
+    url:"https://open-platform.theguardian.com",
+    desc:"Статьи Guardian — поиск, категории, теги. Бесплатно без ограничений для разработки.",
+    free:true
+  },
+  {
+    name:"Open Library API",cat:"Data",argos:true,hot:false,auth:"nokey",
+    url:"https://openlibrary.org/developers/api",
+    desc:"Internet Archive Open Library — 20M книг, метаданные, covers. Без ключа.",
+    note:"База знаний для AWA-Core learning модуля",
+    free:true
+  },
+  {
+    name:"arXiv API",cat:"Data",argos:true,hot:true,auth:"nokey",
+    url:"https://arxiv.org/help/api/",
+    desc:"Научные статьи AI/ML/CS без ключа. XML/Atom feed. Поиск по категории cs.AI, cs.LG и т.д.",
+    note:"Curiosity engine — следить за новыми AI исследованиями",
+    free:true
+  },
+
+  // ══════════════════ DEV / INFRA ══════════════════
+  {
+    name:"GitHub REST API",cat:"Dev",argos:true,hot:true,auth:"key",
+    url:"https://docs.github.com/rest",
+    desc:"Repos, issues, PRs, actions, releases. Бесплатно: 5,000 req/час с токеном. Используется ArgoCD!",
+    note:"✓ GitOps модуль уже использует — расширить для CI/CD",
+    free:true
+  },
+  {
+    name:"Cloudflare API",cat:"Dev",argos:true,hot:false,auth:"key",
+    url:"https://developers.cloudflare.com/api/",
+    desc:"DNS, tunnels, Workers, Pages, KV storage. Бесплатный план очень щедрый.",
+    note:"Platform модуль — Cloudflare Tunnel для внешнего доступа к ARGOS",
+    free:true
+  },
+  {
+    name:"Docker Hub API",cat:"Dev",argos:true,hot:false,auth:"key",
+    url:"https://docs.docker.com/docker-hub/api/latest/",
+    desc:"Поиск образов, tags, manifests. Используется Watchtower!",
+    note:"✓ Watchtower использует — можно добавить мониторинг образов",
+    free:true
+  },
+  {
+    name:"Ntfy.sh",cat:"Dev",argos:true,hot:true,auth:"nokey",
+    url:"https://ntfy.sh",
+    desc:"Push-уведомления через HTTP без ключа! Публичный сервер или self-hosted. curl ntfy.sh/argos -d 'Alert!'",
+    note:"Мгновенная интеграция в _init_alerts() — push без Telegram",
+    free:true
+  },
+  {
+    name:"Pushover API",cat:"Dev",argos:true,hot:false,auth:"key",
+    url:"https://pushover.net/api",
+    desc:"Push-уведомления на iOS/Android. $5 one-time license, API бесплатный.",
+    note:"Алерты ARGOS на телефон",
+    free:true
+  },
+  {
+    name:"Telegram Bot API",cat:"Dev",argos:true,hot:true,auth:"key",
+    url:"https://core.telegram.org/bots/api",
+    desc:"Полностью бесплатный бот API. Сообщения, файлы, inline keyboard, webhooks. Без лимитов.",
+    note:"✓ ARGOS Telegram интеграция — команды /статус /логи /перезапуск",
+    free:true
+  },
+  {
+    name:"Webhook.site",cat:"Dev",argos:true,hot:false,auth:"nokey",
+    url:"https://webhook.site",
+    desc:"Тестирование webhooks без кода. Уникальный URL для инспекции запросов.",
+    free:true
+  },
+  {
+    name:"RequestBin",cat:"Dev",argos:false,hot:false,auth:"nokey",
+    url:"https://requestbin.com",
+    desc:"Debug HTTP запросов — инспекция headers, body. Бесплатно.",
+    free:true
+  },
+
+  // ══════════════════ MEDIA ══════════════════
+  {
+    name:"Unsplash API",cat:"Media",argos:false,hot:false,auth:"key",
+    url:"https://unsplash.com/developers",
+    desc:"Бесплатные фото высокого качества. 50 req/час на demo, 5,000 req/час production.",
+    free:true
+  },
+  {
+    name:"Pexels API",cat:"Media",argos:false,hot:false,auth:"key",
+    url:"https://www.pexels.com/api/",
+    desc:"Фото и видео. 200 req/час, 20,000 req/мес бесплатно.",
+    free:true
+  },
+  {
+    name:"Pixabay API",cat:"Media",argos:false,hot:false,auth:"key",
+    url:"https://pixabay.com/api/docs/",
+    desc:"Изображения, видео, музыка. 5,000 req/час бесплатно.",
+    free:true
+  },
+  {
+    name:"Last.fm API",cat:"Media",argos:false,hot:false,auth:"key",
+    url:"https://www.last.fm/api",
+    desc:"Музыкальные метаданные, похожие треки, биографии. Бесплатно.",
+    free:true
+  },
+  {
+    name:"Spotify Web API",cat:"Media",argos:false,hot:false,auth:"key",
+    url:"https://developer.spotify.com/documentation/web-api",
+    desc:"Треки, плейлисты, рекомендации, аудио-фичи. Бесплатно для разработки.",
+    free:true
+  },
+  {
+    name:"YouTube Data API v3",cat:"Media",argos:true,hot:false,auth:"key",
+    url:"https://developers.google.com/youtube/v3",
+    desc:"Поиск видео, метаданные, transcripts. 10,000 units/day бесплатно.",
+    note:"web_learn — поиск обучающих видео для Curiosity Engine",
+    free:true
+  },
+
+  // ══════════════════ MISC ══════════════════
+  {
+    name:"ipify",cat:"Misc",argos:true,hot:false,auth:"nokey",
+    url:"https://www.ipify.org",
+    desc:"Узнать внешний IP одним GET запросом. Без ключа, без лимитов. api.ipify.org?format=json",
+    note:"Сетевой мониторинг ARGOS",
+    free:true
+  },
+  {
+    name:"WorldTimeAPI",cat:"Misc",argos:true,hot:false,auth:"nokey",
+    url:"http://worldtimeapi.org",
+    desc:"Точное время по timezone без ключа. JSON ответ.",
+    note:"Синхронизация времени в scheduler модуле",
+    free:true
+  },
+  {
+    name:"Numbers API",cat:"Misc",argos:false,hot:false,auth:"nokey",
+    url:"http://numbersapi.com",
+    desc:"Факты о числах, датах, математике. Без ключа. numbersapi.com/42/trivia",
+    free:true
+  },
+  {
+    name:"Open Disease Data API",cat:"Misc",argos:false,hot:false,auth:"nokey",
+    url:"https://disease.sh",
+    desc:"COVID, flu статистика без ключа. Для health monitoring приложений.",
+    free:true
+  },
+  {
+    name:"Random User API",cat:"Misc",argos:false,hot:false,auth:"nokey",
+    url:"https://randomuser.me",
+    desc:"Генерация тестовых пользователей. Без ключа.",
+    free:true
+  },
+  {
+    name:"ZenQuotes API",cat:"Misc",argos:true,hot:false,auth:"nokey",
+    url:"https://zenquotes.io",
+    desc:"Вдохновляющие цитаты без ключа. CORS поддержка.",
+    note:"Curiosity / daily briefing модуль",
+    free:true
+  },
+  {
+    name:"PokeAPI",cat:"Misc",argos:false,hot:false,auth:"nokey",
+    url:"https://pokeapi.co",
+    desc:"Pokémon данные без ключа. Часто используется для тестирования API клиентов.",
+    free:true
+  },
+  {
+    name:"Open Trivia DB",cat:"Misc",argos:false,hot:false,auth:"nokey",
+    url:"https://opentdb.com/api_config.php",
+    desc:"Вопросы викторины без ключа. 50+ категорий.",
+    free:true
+  },
+];
+
+// State
+let currentCat='all';
+let currentSearch='';
+
+function authBadge(a){
+  if(a==='nokey')return'<span class="tag nokey">NO KEY</span>';
+  if(a==='key')return'<span class="tag key">API KEY</span>';
+  return'<span class="tag key">OAUTH</span>';
+}
+
+function render(){
+  const grid=document.getElementById('grid');
+  const filtered=APIs.filter(api=>{
+    const matchCat=currentCat==='all'||(currentCat==='argos'&&api.argos)||api.cat===currentCat;
+    const q=currentSearch.toLowerCase();
+    const matchQ=!q||api.name.toLowerCase().includes(q)||api.desc.toLowerCase().includes(q)||(api.note&&api.note.toLowerCase().includes(q))||api.cat.toLowerCase().includes(q);
+    return matchCat&&matchQ;
+  });
+
+  document.getElementById('shown-count').textContent=filtered.length;
+  document.getElementById('shown-count2').textContent=filtered.length;
+  document.getElementById('total-count').textContent=APIs.length;
+  document.getElementById('total-count2').textContent=APIs.length;
+
+  if(!filtered.length){
+    grid.innerHTML='<div class="no-results">НЕТ РЕЗУЛЬТАТОВ · попробуй другой запрос</div>';
+    return;
+  }
+
+  grid.innerHTML=filtered.map(api=>`
+    <div class="api-card${api.argos?' argos-hot':''}">
+      <div class="card-top">
+        <div class="card-name">${api.name}</div>
+        <div class="card-tags">
+          ${api.hot?'<span class="tag hot">HOT</span>':''}
+          ${api.argos?'<span class="tag argos">ARGOS ✓</span>':''}
+          ${api.free?'<span class="tag free">FREE</span>':'<span class="tag paid">PAID</span>'}
+          ${authBadge(api.auth)}
+        </div>
+      </div>
+      <div class="card-desc">${api.desc}</div>
+      ${api.note?`<div class="card-note">⚡ ${api.note}</div>`:''}
+      <div class="card-meta">
+        <span class="cat-badge">${api.cat}</span>
+        <a href="${api.url}" class="card-url" target="_blank">${api.url.replace('https://','').replace('http://','').split('/')[0]}</a>
+      </div>
+    </div>
+  `).join('');
+}
+
+// Event listeners
+document.querySelectorAll('.filter-btn').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    currentCat=btn.dataset.cat;
+    render();
+  });
+});
+
+document.getElementById('search').addEventListener('input',e=>{
+  currentSearch=e.target.value;
+  render();
+});
+
+render();
+</script>
+</body>
+</html>

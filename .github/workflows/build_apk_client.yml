@@ -1,0 +1,77 @@
+name: "Build ARGOS Client APK"
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "main_kivy.py"
+      - "buildozer.spec"
+      - "src/**"
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      release_mode:
+        description: "Build mode"
+        required: false
+        default: "debug"
+        type: choice
+        options:
+          - debug
+          - release
+
+env:
+  PIP_USER: "0"
+  PYTHONNOUSERSITE: "1"
+  CYTHON_DEFAULT_LANGUAGE_LEVEL: "3"
+
+jobs:
+  build-apk:
+    name: "Build Client APK"
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: "temurin"
+      - name: Install system deps
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y autoconf automake libtool build-essential \
+            libffi-dev libssl-dev git zip unzip zlib1g-dev cmake ccache
+      - name: Setup venv
+        run: |
+          python -m venv venv
+          echo "$PWD/venv/bin" >> $GITHUB_PATH
+          echo "VIRTUAL_ENV=$PWD/venv" >> $GITHUB_ENV
+      - name: Install buildozer
+        run: |
+          pip install --upgrade pip
+          pip install buildozer cython==0.29.36 "pyjnius>=1.6.1"
+      - name: Patch pip no-user
+        run: |
+          mkdir -p ~/.config/pip
+          printf '[global]\nno-user-site = true\n' > ~/.config/pip/pip.conf
+          find / -path "*/pythonforandroid*" -name "*.py" 2>/dev/null | while read f; do
+            sed -i "s/'--user'//g; s/\"--user\"//g" "$f" 2>/dev/null || true
+          done
+          echo "Patch done"
+      - name: Build APK
+        run: |
+          MODE="${{ github.event.inputs.release_mode || 'debug' }}"
+          buildozer android "$MODE" 2>&1 | tee /tmp/build.log
+          exit ${PIPESTATUS[0]}
+        timeout-minutes: 60
+      - name: Upload APK
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: "argos-client-apk-${{ github.run_number }}"
+          path: bin/*.apk
+          if-no-files-found: warn
+          retention-days: 30
+
