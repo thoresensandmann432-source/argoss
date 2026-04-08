@@ -919,11 +919,13 @@ class HuggingFaceAI:
     # Unified command handler (вызывается из core.py)
     # ─────────────────────────────────────────────────────────────────────────
 
-    def handle(self, text: str) -> str:
+    def handle(self, text: str) -> str | None:
         """
         Единая точка входа для HF-команд из core.py.
         Разбирает команды вида: hf <sub> [args...] [:: extra]
-
+        
+        Возвращает None если текст не содержит HF команд.
+        
         Команды:
           hf status / hf статус          — статус пула токенов
           hf spaces                       — список алиасов Space
@@ -942,6 +944,17 @@ class HuggingFaceAI:
           hf ask <текст>                  — text generation
           hf embed <текст>                — embedding вектор (размер)
         """
+        # Проверка TRIGGERS - если текст не содержит HF команд, выходим
+        t_lower = (text or "").lower()
+        hf_triggers = ("hf ", "huggingface", "hf status", "hf spaces", 
+                       "hf voiceclone", "hf joycaption", "hf sentiment",
+                       "hf finance", "hf datasetgen", "hf echo", 
+                       "hf netgoat", "hf prompts", "hf random", 
+                       "hf index", "hf search", "hf space", 
+                       "hf ask", "hf embed", "huggingfaceai")
+        if not any(tr in t_lower for tr in hf_triggers):
+            return None
+        
         t = (text or "").strip()
         # Убираем префикс "hf " если есть
         for prefix in ("hf ", "huggingface "):
@@ -1066,7 +1079,7 @@ class HuggingFaceAI:
             "  hf space <alias> [text]— произвольный Space\n"
             "  hf ask <текст>         — text generation\n"
         )
-        return help_text
+        return None  # Не перехватываем все сообщения
 
 
 TRIGGERS = [
