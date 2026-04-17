@@ -1,0 +1,70 @@
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'build-mcp'
+    args: ['build', '-t', 'us-central1-docker.pkg.dev/argos-489214/argos-repo/argos-mcp:latest', '-f', 'Dockerfile.mcp', '.']
+
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'build-core'
+    args: ['build', '-t', 'us-central1-docker.pkg.dev/argos-489214/argos-repo/argos-core:latest', '-f', 'Dockerfile.core', '.']
+
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'push-mcp'
+    args: ['push', 'us-central1-docker.pkg.dev/argos-489214/argos-repo/argos-mcp:latest']
+
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'push-core'
+    args: ['push', 'us-central1-docker.pkg.dev/argos-489214/argos-repo/argos-core:latest']
+
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy-mcp'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'argos-mcp'
+      - '--image'
+      - 'us-central1-docker.pkg.dev/argos-489214/argos-repo/argos-mcp:latest'
+      - '--region'
+      - 'us-central1'
+      - '--platform'
+      - 'managed'
+      - '--allow-unauthenticated'
+      - '--memory'
+      - '2Gi'
+      - '--cpu'
+      - '1'
+      - '--min-instances'
+      - '1'
+      - '--max-instances'
+      - '5'
+      - '--set-env-vars'
+      - 'ARGOS_ENV=cloud'
+
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy-core'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'argos-core'
+      - '--image'
+      - 'us-central1-docker.pkg.dev/argos-489214/argos-repo/argos-core:latest'
+      - '--region'
+      - 'us-central1'
+      - '--platform'
+      - 'managed'
+      - '--allow-unauthenticated'
+      - '--memory'
+      - '4Gi'
+      - '--cpu'
+      - '2'
+      - '--min-instances'
+      - '1'
+      - '--max-instances'
+      - '5'
+      - '--set-env-vars'
+      - 'ARGOS_ENV=cloud'
+
+images:
+  - 'us-central1-docker.pkg.dev/argos-489214/argos-repo/argos-mcp:latest'
+  - 'us-central1-docker.pkg.dev/argos-489214/argos-repo/argos-core:latest'

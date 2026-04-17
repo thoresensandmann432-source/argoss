@@ -1,0 +1,462 @@
+"""
+src/ai_router.py — Автопереключение между AI провайдерами.
+Порядок: Gemini → Groq → DeepSeek → GigaChat → YandexGPT → WatsonX → xAI Grok → Ollama
+
+Cost Optimization:
+- Model Tiering: автоматический выбор модели по сложности запроса
+- Semantic Caching: кэширование ответов по смыслу
+"""
+
+from __future__ import annotations
+import os
+import time
+import logging
+import threading
+from collections import deque
+
+log = logging.getLogger("argos.ai_router")
+
+# Cost optimization imports
+try:
+    from src.api_cost_optimizer import get_cached, store_cached, get_tier_and_model
+    HAS_COST_OPT = True
+except ImportError:
+    HAS_COST_OPT = False
+    log.warning("[AI Router] api_cost_optimizer not available")
+
+
+def _env_flag(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "on", "yes", "да", "вкл"}
+
+
+# ── Пул ключей Gemini с per-key rate-limiting ─────────────────────────────────
+class _GeminiKeyPool:
+    """
+    Ротирует ключи GEMINI_API_KEY_0 … GEMINI_API_KEY_N (и GEMINI_API_KEY).
+    Каждый ключ ограничен MAX_RPM запросами в минуту.
+    get_key() возвращает (index, key) следующего доступного ключа
+    или блокируется до освобождения места (не более WAIT_SEC секунд).
+    """
+
+    MAX_RPM   = int(os.getenv("GEMINI_RPM_PER_KEY", "5"))   # лимит на ключ
+    WAIT_SEC  = 65                                            # макс. ожидание
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._keys: list[str] = self._collect_keys()
+        # для каждого ключа храним временны́е метки запросов в окне 60 с
+        self._timestamps: list[deque] = [deque() for _ in self._keys]
+        self._cursor = 0   # round-robin
+
+    @staticmethod
+    def _collect_keys() -> list[str]:
+        keys = []
+        for i in range(20):                          # поддерживаем до 20 ключей
+            # Поддерживаем оба формата: GEMINI_API_KEY_0 и GEMINI_API_KEY0
+            k = os.getenv(f"GEMINI_API_KEY_{i}", "") or os.getenv(f"GEMINI_API_KEY{i}", "")
+            if k and k not in ("", "your_key_here"):
+                keys.append(k)
+        # Также проверяем «голый» GEMINI_API_KEY (обратная совместимость)
+        fallback = os.getenv("GEMINI_API_KEY", "")
+        if fallback and fallback not in ("", "your_key_here") and fallback not in keys:
+            keys.append(fallback)
+        return keys
+
+    def available(self) -> bool:
+        return bool(self._keys)
+
+    def get_key(self) -> tuple[int, str] | None:
+        """
+        Возвращает (idx, key) ключ с доступным слотом.
+        Ждёт до WAIT_SEC секунд; возвращает None если всё занято.
+        """
+        if not self._keys:
+            return None
+        deadline = time.time() + self.WAIT_SEC
+        while time.time() < deadline:
+            with self._lock:
+                now = time.time()
+                n = len(self._keys)
+                # проверяем ключи по кругу начиная с cursor
+                for offset in range(n):
+                    idx = (self._cursor + offset) % n
+                    dq = self._timestamps[idx]
+                    # чистим метки старше 60 с
+                    while dq and now - dq[0] >= 60:
+                        dq.popleft()
+                    if len(dq) < self.MAX_RPM:
+                        dq.append(now)
+                        self._cursor = (idx + 1) % n   # следующий старт
+                        return idx, self._keys[idx]
+            # все ключи заняты — ждём освобождения
+            time.sleep(1)
+        return None   # тайм-аут
+
+    def mark_rate_limited(self, idx: int):
+        """Помечает ключ как полностью исчерпанный на 60 с."""
+        with self._lock:
+            dq = self._timestamps[idx]
+            now = time.time()
+            # заполняем очередь «до отказа»
+            while len(dq) < self.MAX_RPM:
+                dq.append(now)
+
+    def reload(self):
+        """Перечитывает ключи из env (для динамического добавления)."""
+        with self._lock:
+            new_keys = self._collect_keys()
+            if new_keys != self._keys:
+                self._keys = new_keys
+                self._timestamps = [deque() for _ in new_keys]
+                self._cursor = 0
+                log.info(f"[GeminiPool] Ключей загружено: {len(new_keys)}")
+
+    def status(self) -> str:
+        """Возвращает строку состояния пула для диагностики."""
+        with self._lock:
+            now = time.time()
+            parts = []
+            for i, dq in enumerate(self._timestamps):
+                used = sum(1 for t in dq if now - t < 60)
+                parts.append(f"key_{i}: {used}/{self.MAX_RPM}")
+            return "  ".join(parts) if parts else "нет ключей"
+
+
+_GEMINI_POOL = _GeminiKeyPool()
+
+# Cooldown в секундах после ошибки провайдера
+_COOLDOWN = int(os.getenv("ARGOS_PROVIDER_COOLDOWN", "60"))
+
+# Состояние провайдеров: {name: last_fail_time}
+_provider_state: dict[str, float] = {}
+
+
+def _is_available(name: str) -> bool:
+    """Провайдер доступен если не было ошибки или cooldown истёк."""
+    last_fail = _provider_state.get(name, 0)
+    return (time.time() - last_fail) > _COOLDOWN
+
+
+def _mark_failed(name: str) -> None:
+    _provider_state[name] = time.time()
+    log.warning(f"[AI Router] {name} недоступен — cooldown {_COOLDOWN}s")
+
+
+def _mark_ok(name: str) -> None:
+    _provider_state.pop(name, None)
+
+
+class AIRouter:
+    """Роутер запросов между AI провайдерами с автофallback."""
+
+    # Порядок приоритетов
+    PROVIDERS = [
+        "gemini",
+        "groq",
+        "deepseek",
+        "gigachat",
+        "yandexgpt",
+        "watsonx",
+        "xai",
+        "ollama",
+    ]
+
+    def __init__(self, core=None):
+        self.core = core
+
+    @staticmethod
+    def _gemini_model_candidates() -> list[str]:
+        candidates = [
+            os.getenv("GEMINI_MODEL", "").strip(),
+            "gemini-2.5-flash",
+            "gemini-2.5-flash-lite",
+            "gemini-2.0-flash-lite",
+            "gemini-1.5-flash",
+            "gemini-1.5-flash-8b",
+        ]
+        seen: set[str] = set()
+        result: list[str] = []
+        for model_name in candidates:
+            if model_name and model_name not in seen:
+                seen.add(model_name)
+                result.append(model_name)
+        return result
+
+    def ask(self, prompt: str, system: str = "") -> str | None:
+        """Отправить запрос — автоматически выбирает доступного провайдера."""
+        # Cost optimization: semantic cache
+        if HAS_COST_OPT:
+            cached = get_cached(prompt)
+            if cached:
+                log.info("[AI Router] Semantic cache HIT")
+                return cached
+        
+        # Cost optimization: model tiering
+        if HAS_COST_OPT:
+            tier, model = get_tier_and_model(prompt)
+            log.info("[AI Router] Query tier: %s (%s)", tier, model)
+        
+        for provider in self.PROVIDERS:
+            if not _is_available(provider):
+                continue
+            result = self._try_provider(provider, prompt, system)
+            if result:
+                _mark_ok(provider)
+                # Cost optimization: store in cache
+                if HAS_COST_OPT:
+                    store_cached(prompt, result)
+                return result
+        log.error("[AI Router] Все провайдеры недоступны")
+        return None
+
+    def _try_provider(self, name: str, prompt: str, system: str) -> str | None:
+        try:
+            method = getattr(self, f"_ask_{name}", None)
+            if method:
+                return method(prompt, system)
+        except Exception as e:
+            log.warning(f"[AI Router] {name} ошибка: {e}")
+            _mark_failed(name)
+        return None
+
+    # ── Провайдеры ────────────────────────────────────────────────────────────
+
+    def _ask_gemini(self, prompt: str, system: str) -> str | None:
+        _GEMINI_POOL.reload()          # подхватываем новые ключи из env
+        if not _GEMINI_POOL.available():
+            return None
+
+        slot = _GEMINI_POOL.get_key()
+        if slot is None:
+            raise RuntimeError("Gemini: все ключи исчерпаны (rate limit), подожди минуту")
+        idx, key = slot
+
+        try:
+            import google.generativeai as genai
+
+            genai.configure(api_key=key)
+            full = f"{system}\n\n{prompt}" if system else prompt
+            model_candidates = self._gemini_model_candidates()
+            tried = []
+            for model_name in [m for m in model_candidates if m]:
+                tried.append(model_name)
+                try:
+                    model = genai.GenerativeModel(model_name)
+                    resp = model.generate_content(full)
+                    log.debug(f"[GeminiPool] ключ {idx} использован, модель={model_name}")
+                    return getattr(resp, "text", None) or ""
+                except Exception as model_err:
+                    # Если модели нет, пробуем следующую.
+                    if "not found" in str(model_err).lower() or "not supported" in str(model_err).lower():
+                        continue
+                    raise
+            raise RuntimeError(f"Gemini: не удалось использовать модели {tried}")
+        except Exception as e:
+            err = str(e)
+            if "429" in err or "quota" in err.lower() or "rate" in err.lower():
+                log.warning(f"[GeminiPool] ключ {idx} — rate limit, переключаем")
+                _GEMINI_POOL.mark_rate_limited(idx)
+                # пробуем следующий ключ рекурсивно (один раз)
+                slot2 = _GEMINI_POOL.get_key()
+                if slot2 and slot2[0] != idx:
+                    idx2, key2 = slot2
+                    try:
+                        genai.configure(api_key=key2)
+                        for model_name in self._gemini_model_candidates():
+                            try:
+                                model2 = genai.GenerativeModel(model_name)
+                                resp2 = model2.generate_content(full)
+                                return getattr(resp2, "text", None) or ""
+                            except Exception as retry_err:
+                                if "not found" in str(retry_err).lower() or "not supported" in str(retry_err).lower():
+                                    continue
+                                raise
+                        raise RuntimeError("Gemini: не найдено доступной fallback-модели")
+                    except Exception as e2:
+                        raise RuntimeError(f"Gemini[key_{idx2}]: {e2}")
+            raise RuntimeError(f"Gemini[key_{idx}]: {e}")
+
+    def _ask_groq(self, prompt: str, system: str) -> str | None:
+        key = os.getenv("GROQ_API_KEY", "")
+        if not key:
+            return None
+        try:
+            import requests
+
+            headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+            messages = []
+            if system:
+                messages.append({"role": "system", "content": system})
+            messages.append({"role": "user", "content": prompt})
+            resp = requests.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers=headers,
+                json={"model": "llama-3.3-70b-versatile", "messages": messages},
+                timeout=30,
+            )
+            if resp.status_code == 429:
+                raise RuntimeError("Rate limit")
+            return resp.json()["choices"][0]["message"]["content"]
+        except Exception as e:
+            raise RuntimeError(f"Groq: {e}")
+
+    def _ask_deepseek(self, prompt: str, system: str) -> str | None:
+        key = os.getenv("DEEPSEEK_API_KEY", "")
+        if not key:
+            return self._ask_deepseek_space(prompt, system) if _env_flag("HF_DEEPSEEK_SPACE_ENABLED", False) else None
+        try:
+            import requests
+
+            headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+            messages = []
+            if system:
+                messages.append({"role": "system", "content": system})
+            messages.append({"role": "user", "content": prompt})
+            resp = requests.post(
+                "https://api.deepseek.com/chat/completions",
+                headers=headers,
+                json={"model": "deepseek-chat", "messages": messages},
+                timeout=30,
+            )
+            data = resp.json()
+            choices = data.get("choices") or []
+            if not choices:
+                err = str(data)
+                if "Insufficient Balance" in err or "invalid_request_error" in err:
+                    if not _env_flag("HF_DEEPSEEK_SPACE_ENABLED", False):
+                        raise RuntimeError(f"DeepSeek bad response: {data}")
+                    space_fallback = self._ask_deepseek_space(prompt, system)
+                    if space_fallback:
+                        return space_fallback
+                raise RuntimeError(f"DeepSeek bad response: {data}")
+            return choices[0]["message"]["content"]
+        except Exception as e:
+            raise RuntimeError(f"DeepSeek: {e}")
+
+    def _ask_deepseek_space(self, prompt: str, system: str) -> str | None:
+        """Fallback через HF Space hi1234567890t/deepseek (gradio_client)."""
+        if not _env_flag("HF_DEEPSEEK_SPACE_ENABLED", False):
+            return None
+        space_id = (os.getenv("HF_DEEPSEEK_SPACE", "hi1234567890t/deepseek") or "").strip()
+        if not space_id:
+            return None
+        full = f"{system}\n\n{prompt}" if system else prompt
+        try:
+            from gradio_client import Client
+            kwargs = {}
+            token = os.getenv("HF_TOKEN", "").strip()
+            if token:
+                kwargs["hf_token"] = token
+            client = Client(space_id, **kwargs)
+            for api_name in ("/chat", "/predict", "/run"):
+                try:
+                    out = client.predict(full, api_name=api_name)
+                    if isinstance(out, str) and out.strip():
+                        return out.strip()
+                    if isinstance(out, (list, tuple)):
+                        for item in out:
+                            if isinstance(item, str) and item.strip():
+                                return item.strip()
+                except Exception:
+                    continue
+        except Exception as e:
+            log.debug("[AI Router] deepseek space fallback unavailable: %s", e)
+        return None
+
+    def _ask_gigachat(self, prompt: str, system: str) -> str | None:
+        if not self.core:
+            return None
+        try:
+            return self.core._ask_gigachat(system, prompt)
+        except Exception as e:
+            raise RuntimeError(f"GigaChat: {e}")
+
+    def _ask_yandexgpt(self, prompt: str, system: str) -> str | None:
+        if not self.core:
+            return None
+        try:
+            return self.core._ask_yandexgpt(system, prompt)
+        except Exception as e:
+            raise RuntimeError(f"YandexGPT: {e}")
+
+    def _ask_watsonx(self, prompt: str, system: str) -> str | None:
+        key = os.getenv("WATSONX_API_KEY", "")
+        if not key:
+            return None
+        try:
+            if self.core and hasattr(self.core, "_ask_watsonx"):
+                return self.core._ask_watsonx(system, prompt)
+        except Exception as e:
+            raise RuntimeError(f"WatsonX: {e}")
+        return None
+
+    def _ask_xai(self, prompt: str, system: str) -> str | None:
+        key = (os.getenv("XAI_API_KEY", "") or os.getenv("GROK_API_KEY", "")).strip()
+        if not key:
+            return None
+        try:
+            import requests
+
+            headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+            messages = []
+            if system:
+                messages.append({"role": "system", "content": system})
+            messages.append({"role": "user", "content": prompt})
+            resp = requests.post(
+                "https://api.x.ai/v1/chat/completions",
+                headers=headers,
+                json={"model": "grok-beta", "messages": messages},
+                timeout=30,
+            )
+            return resp.json()["choices"][0]["message"]["content"]
+        except Exception as e:
+            raise RuntimeError(f"xAI Grok: {e}")
+
+    def _ask_ollama(self, prompt: str, system: str) -> str | None:
+        host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+        model = os.getenv("OLLAMA_MODEL", "llama3")
+        try:
+            import requests
+
+            resp = requests.post(
+                f"{host}/api/generate",
+                json={"model": model, "prompt": prompt, "system": system, "stream": False},
+                timeout=120,
+            )
+            return resp.json().get("response")
+        except Exception as e:
+            raise RuntimeError(f"Ollama: {e}")
+
+    def status(self) -> str:
+        lines = ["🤖 AI Router — статус провайдеров:\n"]
+        gemini_has_key = _GEMINI_POOL.available()
+        gigachat_has_key = bool(
+            os.getenv("GIGACHAT_ACCESS_TOKEN")
+            or (os.getenv("GIGACHAT_CLIENT_ID") and os.getenv("GIGACHAT_CLIENT_SECRET"))
+        )
+        yandex_has_key = bool(os.getenv("YANDEX_IAM_TOKEN") and os.getenv("YANDEX_FOLDER_ID"))
+        for p in self.PROVIDERS:
+            if p == "gemini":
+                has_key = gemini_has_key
+            elif p == "gigachat":
+                has_key = gigachat_has_key
+            elif p == "yandexgpt":
+                has_key = yandex_has_key
+            elif p == "groq":
+                has_key = bool(os.getenv("GROQ_API_KEY"))
+            elif p == "deepseek":
+                has_key = bool(os.getenv("DEEPSEEK_API_KEY"))
+            elif p == "watsonx":
+                has_key = bool(os.getenv("WATSONX_API_KEY"))
+            elif p == "xai":
+                has_key = bool((os.getenv("XAI_API_KEY") or "").strip() or (os.getenv("GROK_API_KEY") or "").strip())
+            else:
+                has_key = True
+            available = _is_available(p)
+            icon = "✅" if has_key and available else ("⏳" if not available else "❌")
+            lines.append(f"  {icon} {p:<12} {'ключ есть' if has_key else 'нет ключа'}")
+        lines.append(f"\n  Gemini pool: {_GEMINI_POOL.status()}")
+        return "\n".join(lines)

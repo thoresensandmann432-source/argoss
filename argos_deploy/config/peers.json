@@ -1,0 +1,35 @@
+{
+  "_comment": "Static peer list for Argos P2P mesh.",
+  "network_name": "argos-global",
+  "p2p_port": 8000,
+  "broadcast_port": 55772,
+  "peers": [
+    {
+      "name": "argos-vm-au",
+      "public_ip": "20.53.240.36",
+      "private_ip": "10.0.0.4",
+      "region": "australiaeast",
+      "role": "server",
+      "mcp_port": 8000,
+      "tags": ["primary"]
+    },
+    {
+      "name": "argos-vm-jp-1",
+      "public_ip": "40.81.208.101",
+      "private_ip": "172.16.0.4",
+      "region": "japaneast",
+      "role": "worker",
+      "mcp_port": 8000,
+      "tags": ["japan"]
+    },
+    {
+      "name": "argos-vm-jp-2",
+      "public_ip": "172.207.209.134",
+      "private_ip": "172.16.0.5",
+      "region": "japaneast",
+      "role": "worker",
+      "mcp_port": 8000,
+      "tags": ["japan"]
+    }
+  ]
+}
