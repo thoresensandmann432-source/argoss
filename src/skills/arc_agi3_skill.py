@@ -1,412 +1,313 @@
 """
-arc_agi3_skill.py — ARGOS ↔ ARC-AGI-3 Competition Interface
+arc_agi3_skill.py — ARGOS ↔ ARC-AGI-3 (делегирует в arc_play.py)
 
-ARC-AGI-3 — интерактивный бенчмарк для агентов:
-  • Агент наблюдает 64×64 сетку (16 цветов), выбирает действия
-  • Нет явных инструкций — агент сам обнаруживает цель и правила среды
-  • Оценка RHAE = (шагов_человека / шагов_агента)² ← нужна эффективность
-  • API: arc.make(env_id) → reset() → step(action) → (state, reward, done, info)
+arc_play.py запускает игру в изолированном .venv_arc, где установлен
+настоящий arc-agi с Arcade + arcengine. ARC_API_KEY читается из .env.
 
-Интеграция с Аргосом:
-  • execute_intent: "arc старт", "arc решай <env>", "arc статус", "arc стоп"
-  • LLM-рассуждение через _ask_ollama (RX 580 для анализа, RX 560 для быстрых решений)
-  • WorldModel сохраняет гипотезы о правилах среды в памяти Аргоса
+Почему делегирование, а не прямой import:
+  • В системном Python установлен arc-agi v0.0.7 (только датасеты ARC1/2)
+  • В .venv_arc — игровой arc-agi (Arcade, make, step, scorecard)
+  • arc_play.py запускает .venv_arc/python как subprocess → правильный пакет
+
+ARC_API_KEY → three.arcprize.org/api/games → скачивает среду → arcengine
+Без ключа: анонимный ключ через /api/games/anonkey (ограниченный доступ)
 
 Команды:
-  arc статус          — статус подключения и последний результат
-  arc среды           — список доступных окружений
-  arc решай <env_id>  — запустить агента на среде
-  arc шаг <действие>  — ручной шаг (для тестирования)
-  arc стоп            — остановить текущий эпизод
+  arc статус          — venv, ключ API, текущий/последний запуск
+  arc среды           — окружения из policy + дефолтные
+  arc решай <env_id>  — запустить среду (делегирует arc_play.start_game_async)
+  arc решай <env> <N> — запустить с N шагов
+  arc авто            — автовыбор среды/действия (epsilon-greedy)
+  arc история         — статистика + QML-рекомендации
+  arc стоп            — статус остановки (subprocess управляется arc_play)
 """
 
 from __future__ import annotations
 
 import os
-import json
+import re
+import sys
 import time
-import threading
-from typing import Any, Optional
+from pathlib import Path
+from typing import Optional
 from src.argos_logger import get_logger
-from src.mind.world_model import WorldModel
-from src.mind.arc_planner import ArcPlanner
 
 log = get_logger("argos.arc3")
 
-# ── Константы ─────────────────────────────────────────────────────────────────
-ARC3_API_KEY_ENV   = "ARC3_API_KEY"
-ARC3_API_BASE      = "https://three.arcprize.org"
-ARC3_LOCAL_PKG     = "arc-agi"          # pip install arc-agi
-ARC3_MAX_STEPS     = 500               # лимит шагов за эпизод
-ARC3_EXPLORE_STEPS = 30               # фаза разведки перед планированием
+# ── Импорт arc_play из корня проекта ─────────────────────────────────────────
+# Корень: src/skills/ → ../.. → src/ → ../../.. → project root
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
-# 16 цветов ARC-AGI-3 (индекс → имя для LLM-промпта)
-ARC3_COLOR_NAMES = [
-    "black", "blue", "red", "green", "yellow",
-    "grey", "magenta", "orange", "azure", "maroon",
-    "cyan", "lime", "brown", "white", "pink", "purple"
-]
+_ARC_PLAY_OK = False
+arc_play = None  # type: ignore[assignment]
+
+try:
+    if str(_PROJECT_ROOT) not in sys.path:
+        sys.path.insert(0, str(_PROJECT_ROOT))
+    import arc_play as _arc_play_module
+    arc_play = _arc_play_module
+    _ARC_PLAY_OK = True
+except Exception as _import_err:
+    log.warning("[ARC3] arc_play.py недоступен: %s", _import_err)
+
+# ── Константы ─────────────────────────────────────────────────────────────────
+ARC3_API_KEY_ENV = "ARC_API_KEY"
+ARC3_API_BASE    = "https://three.arcprize.org"
+ARC3_DEFAULT_ENVS = ["ls20", "ft09", "tr28"]
 
 
 class ARC3Agent:
     """
-    Агент для решения задач ARC-AGI-3.
+    Агент ARC-AGI-3.
 
-    Фазы работы:
-      1. EXPLORE  — случайные/систематические действия, наблюдение эффектов
-      2. MODEL     — LLM анализирует изменения и строит гипотезу о правилах
-      3. PLAN      — LLM строит план действий к цели
-      4. EXECUTE   — выполнение плана, адаптация при расхождении
+    Вся игровая логика выполняется в arc_play.py через .venv_arc subprocess.
+    Этот класс отвечает за:
+      — форматирование команд и ответов для пользователя
+      — LLM-анализ результатов из arc_history.jsonl
+      — маршрутизацию handle() → arc_play.*
     """
 
     def __init__(self, core=None):
         self.core = core
-        self._game = None
-        self._env_id: str = ""
-        self._step_count = 0
-        self._episode_start = 0.0
-        self._running = False
-        self._thread: Optional[threading.Thread] = None
-        self._last_result: dict = {}
-        self._wm: Optional[WorldModel] = None    # структурированная модель мира
-        self._planner: Optional[ArcPlanner] = None
-        # Legacy поддержка — заполняется из _wm при необходимости
-        self._history: list[dict] = []
 
-    # ── Подключение к ARC-AGI-3 ───────────────────────────────────────────────
+    # ── Внутренние утилиты ────────────────────────────────────────────────────
 
-    def _load_arc(self):
-        """Пытается импортировать arc-agi. Возвращает модуль или None."""
-        try:
-            import arc  # pip install arc-agi
-            return arc
-        except ImportError:
-            return None
-
-    def _connect_api(self) -> bool:
-        """Проверяет API-ключ и соединение с three.arcprize.org."""
+    def _key_line(self) -> str:
         key = os.getenv(ARC3_API_KEY_ENV, "").strip()
-        if not key:
-            return False
-        try:
-            import requests
-            r = requests.get(
-                f"{ARC3_API_BASE}/api/envs",
-                headers={"Authorization": f"Bearer {key}"},
-                timeout=5
+        if key:
+            return f"✅ {ARC3_API_KEY_ENV} задан (three.arcprize.org)"
+        return f"⚠️ {ARC3_API_KEY_ENV} не задан → работает анонимно"
+
+    def _require_arc_play(self) -> Optional[str]:
+        """Возвращает сообщение об ошибке если arc_play недоступен, иначе None."""
+        if not _ARC_PLAY_OK:
+            return (
+                "❌ arc_play.py не найден в корне проекта.\n"
+                f"   Ожидается: {_PROJECT_ROOT / 'arc_play.py'}"
             )
-            return r.ok
-        except Exception:
-            return False
+        return None
+
+    # ── Команды ───────────────────────────────────────────────────────────────
 
     def status(self) -> str:
-        arc = self._load_arc()
-        api_ok = self._connect_api()
-        lines = ["🎮 ARC-AGI-3 Agent:"]
+        lines = ["🎮 ARC-AGI-3 (arc_play.py + .venv_arc):"]
 
-        if arc:
-            lines.append("  ✅ arc-agi пакет установлен")
-        else:
-            lines.append("  ❌ arc-agi не найден → pip install arc-agi")
+        err = self._require_arc_play()
+        if err:
+            lines.append(f"  {err}")
+            return "\n".join(lines)
 
-        if api_ok:
-            lines.append("  ✅ API-ключ действителен (three.arcprize.org)")
-        elif os.getenv(ARC3_API_KEY_ENV):
-            lines.append("  ⚠️ API-ключ задан, но соединение не проверено (офлайн?)")
-        else:
-            lines.append(f"  ❌ API-ключ не задан → .env: {ARC3_API_KEY_ENV}=ваш_ключ")
+        # Состояние venv
+        try:
+            venv_ok, venv_msg = arc_play.ensure_arc_venv()
+            lines.append(f"  {'✅' if venv_ok else '❌'} venv: {venv_msg}")
+        except Exception as e:
+            lines.append(f"  ⚠️ venv: проверка не удалась ({e})")
 
-        if self._running:
-            elapsed = int(time.time() - self._episode_start)
-            lines.append(f"  🔄 Эпизод: {self._env_id} | шаг {self._step_count} | {elapsed}с")
-            if self._wm:
-                lines.append(f"  {self._wm.full_summary()}")
-            if self._planner:
-                lines.append(f"  {self._planner.stats()}")
-        elif self._last_result:
-            r = self._last_result
-            lines.append(
-                f"  📊 Последний: {r.get('env_id','?')} | "
-                f"RHAE {r.get('rhae', 0):.4f} | "
-                f"{r.get('steps', 0)} шагов | {r.get('status','?')} | "
-                f"паттернов: {r.get('patterns', 0)}"
-            )
-            hyp = r.get('hypothesis', '')
-            if hyp and hyp != '—':
-                lines.append(f"  💡 {hyp[:120]}")
+        # API-ключ
+        lines.append(f"  {self._key_line()}")
+
+        # Статус текущего/последнего запуска
+        try:
+            st = arc_play.get_status()
+            state = st.get("state", "idle")
+            if state == "running":
+                lines.append(
+                    f"  🔄 Запущено: {st.get('env_id', '?')} | "
+                    f"шагов: {st.get('steps', '?')} | "
+                    f"действие: {st.get('action_name', '?')}"
+                )
+            elif state == "done":
+                sc = st.get("scorecard", {})
+                score = st.get("score", sc.get("score", "?"))
+                actions = st.get("total_actions", sc.get("total_actions", "?"))
+                lines.append(
+                    f"  ✅ Завершено: {st.get('env_id', '?')} | "
+                    f"score={score} | действий={actions}"
+                )
+            elif state == "error":
+                lines.append(f"  ❌ Ошибка: {st.get('message', '?')}")
+            elif state == "stale":
+                lines.append("  ⚠️ Зависший запуск (процесс завершился без финального статуса)")
+            else:
+                lines.append("  ℹ️ Нет активного запуска")
+        except Exception as e:
+            lines.append(f"  ⚠️ Статус недоступен: {e}")
+
         return "\n".join(lines)
 
-    # ── Наблюдение ─────────────────────────────────────────────────────────────
+    def solve(self, env_id: str, steps: int = 0,
+              action_name: Optional[str] = None) -> str:
+        """
+        Запускает игру через arc_play.start_game_async().
+        steps=0 → arc_play выберет количество шагов из QML-рекомендации.
+        """
+        err = self._require_arc_play()
+        if err:
+            return err
 
-    def _frame_to_text(self, frame) -> str:
-        """
-        Конвертирует 64×64 фрейм в компактное текстовое представление для LLM.
-        Возвращает только непустые (non-black) клетки: (row,col,color).
-        """
-        if frame is None:
-            return "(пустой фрейм)"
         try:
-            lines = []
-            if hasattr(frame, 'tolist'):
-                grid = frame.tolist()
-            elif isinstance(frame, list):
-                grid = frame
-            else:
-                return str(frame)[:200]
-
-            non_black = []
-            for r, row in enumerate(grid):
-                for c, val in enumerate(row):
-                    if val != 0:  # 0 = black / background
-                        name = ARC3_COLOR_NAMES[val] if val < len(ARC3_COLOR_NAMES) else str(val)
-                        non_black.append(f"({r},{c})={name}")
-
-            if not non_black:
-                return "Сетка пуста (только чёрный фон)"
-            # Группируем для читаемости
-            return f"Непустых клеток: {len(non_black)}\n" + ", ".join(non_black[:80])
+            result = arc_play.start_game_async(
+                env_id=env_id,
+                steps=steps,
+                render=False,
+                action_name=action_name or None,
+            )
         except Exception as e:
-            return f"Ошибка разбора фрейма: {e}"
+            return f"❌ Ошибка запуска: {e}"
 
-    def _diff_frames(self, f1, f2) -> str:
-        """Возвращает список изменённых клеток между двумя фреймами."""
+        if result.get("ok"):
+            steps_hint = f"{steps} шагов" if steps else "авто-шаги (QML)"
+            return (
+                f"🎮 ARC-AGI-3: запущена среда `{env_id}` ({steps_hint})\n"
+                f"   → 'arc статус' — текущий прогресс\n"
+                f"   → 'arc история' — результаты после завершения"
+            )
+        return f"⚠️ Не удалось запустить: {result.get('message', result)}"
+
+    def solve_auto(self) -> str:
+        """Автовыбор среды и действия (epsilon-greedy policy из arc_play)."""
+        err = self._require_arc_play()
+        if err:
+            return err
+
         try:
-            g1 = f1.tolist() if hasattr(f1, 'tolist') else f1
-            g2 = f2.tolist() if hasattr(f2, 'tolist') else f2
-            changes = []
-            for r in range(min(len(g1), len(g2))):
-                for c in range(min(len(g1[r]), len(g2[r]))):
-                    if g1[r][c] != g2[r][c]:
-                        old = ARC3_COLOR_NAMES[g1[r][c]] if g1[r][c] < 16 else str(g1[r][c])
-                        new = ARC3_COLOR_NAMES[g2[r][c]] if g2[r][c] < 16 else str(g2[r][c])
-                        changes.append(f"({r},{c}): {old}→{new}")
-            if not changes:
-                return "Изменений нет"
-            return f"{len(changes)} изменений: " + ", ".join(changes[:30])
-        except Exception:
-            return "Не удалось сравнить фреймы"
-
-    # ── Рассуждение через LLM ─────────────────────────────────────────────────
-
-    def _llm_infer_rules(self, history_summary: str) -> str:
-        """LLM анализирует историю эпизода и строит гипотезу о правилах среды."""
-        if not self.core:
-            return "LLM недоступен"
-        prompt = (
-            f"Ты анализируешь интерактивную среду ARC-AGI-3.\n"
-            f"Наблюдения за {len(self._history)} шагов:\n"
-            f"{history_summary}\n\n"
-            f"Задача: вывести гипотезу о правилах среды.\n"
-            f"Что является целью? Как действия влияют на состояние?\n"
-            f"Ответь кратко (3-5 предложений)."
-        )
-        try:
-            result = self.core._ask_ollama("", prompt)
-            return result or "Нет ответа"
+            result = arc_play.start_game_async(env_id="auto", steps=0)
         except Exception as e:
-            return f"Ошибка LLM: {e}"
+            return f"❌ Ошибка: {e}"
 
-    def _llm_plan_action(self, state_text: str, hypothesis: str, available_actions: list) -> Any:
-        """LLM выбирает следующее действие исходя из гипотезы и текущего состояния."""
-        if not self.core:
-            return available_actions[0] if available_actions else 0
-        actions_str = str(available_actions[:20])
-        prompt = (
-            f"Среда ARC-AGI-3. Гипотеза о правилах: {hypothesis}\n"
-            f"Текущее состояние:\n{state_text}\n"
-            f"Доступные действия: {actions_str}\n"
-            f"Выбери ОДНО следующее действие (только число/строку из списка).\n"
-            f"Ответь только значением действия, без объяснений."
-        )
-        try:
-            result = self.core._ask_ollama("", prompt)
-            if result:
-                result = result.strip()
-                # Попытка привести к типу из available_actions
-                for act in available_actions:
-                    if str(act) == result:
-                        return act
-                # Fallback: первое доступное
-                return available_actions[0]
-        except Exception:
-            pass
-        return available_actions[0] if available_actions else 0
+        if result.get("ok"):
+            return (
+                "🤖 ARC-AGI-3: автозапуск (epsilon-greedy)\n"
+                "   → 'arc статус' для результата"
+            )
+        return f"⚠️ {result.get('message', result)}"
 
-    # ── Главный цикл агента ───────────────────────────────────────────────────
-
-    def solve(self, env_id: str, mode: str = "auto") -> str:
-        """
-        Запускает агент на среде env_id.
-        mode: "auto" — полный автономный цикл (explore→model→plan→execute)
-              "explore" — только фаза разведки
-        """
-        arc = self._load_arc()
-        if not arc:
-            return ("❌ arc-agi не установлен.\n"
-                    "Установи: pip install arc-agi\n"
-                    "Ключ API: зарегистрируйся на https://three.arcprize.org")
-
-        if self._running:
-            return f"⚠️ Уже запущен эпизод: {self._env_id}. Остановить: 'arc стоп'"
-
-        self._thread = threading.Thread(
-            target=self._solve_loop,
-            args=(arc, env_id, mode),
-            daemon=True, name=f"arc3-{env_id}"
-        )
-        self._thread.start()
-        return f"🎮 Запускаю ARC-AGI-3 агента на среде `{env_id}` (режим: {mode})..."
-
-    def _solve_loop(self, arc, env_id: str, mode: str):
-        """Основной цикл решения (выполняется в фоне)."""
-        self._running = True
-        self._env_id = env_id
-        self._step_count = 0
-        self._episode_start = time.time()
-        self._history = []
-
-        # ── Инициализация WorldModel + ArcPlanner ─────────────────────────
-        wm = WorldModel(env_id=env_id)
-        self._wm = wm
-        available_actions = list(range(16))
-        planner = ArcPlanner(available_actions=available_actions, core=self.core)
-        self._planner = planner
-
-        done = False
-        info: Any = {}
+    def history(self) -> str:
+        """Статистика прошлых запусков + QML-рекомендации."""
+        err = self._require_arc_play()
+        if err:
+            return err
 
         try:
-            game = arc.make(env_id)
-            state = game.reset()
-            self._game = game
-            log.info("[ARC3] Среда %s запущена.", env_id)
-
-            # Записываем начальное состояние (action=None, step=0)
-            wm.observe(step=0, action=None, state=state, reward=0.0, done=False)
-
-            # ── Главный цикл ──────────────────────────────────────────────
-            while not done and self._step_count < ARC3_MAX_STEPS and self._running:
-                # Выбор действия через ArcPlanner
-                action = planner.next_action(wm)
-
-                state, reward, done, info = game.step(action)
-                self._step_count += 1
-
-                # Обновляем список действий если API предоставил новый
-                if isinstance(info, dict) and 'actions' in info:
-                    planner.update_actions(info['actions'])
-
-                # Записываем в WorldModel
-                rec = wm.observe(
-                    step=self._step_count,
-                    action=action,
-                    state=state,
-                    reward=reward,
-                    done=done,
-                )
-
-                # Обновляем гипотезу по знаку вознаграждения
-                wm.update_hypothesis_from_reward(reward, self._step_count)
-
-                if reward > 0:
-                    log.info("[ARC3] +Награда %.2f на шаге %d (action=%s)", reward, self._step_count, action)
-
-                # ── Моделирование: строим гипотезу после EXPLORE-фазы ────
-                if (mode == "auto"
-                        and self._step_count == ARC3_EXPLORE_STEPS
-                        and not wm.hypotheses):
-                    history_text = wm.history_summary(last_n=ARC3_EXPLORE_STEPS)
-                    patterns_text = wm.patterns_summary()
-                    hypothesis_text = self._llm_infer_rules(
-                        f"{history_text}\n\n{patterns_text}"
-                    )
-                    h = wm.add_hypothesis(hypothesis_text, confidence=0.5, source="llm")
-                    log.info("[ARC3] Гипотеза сформирована (conf=%.2f): %s", h.confidence, h.text[:80])
-
-                    # Сохраняем в память Аргоса
-                    if self.core and hasattr(self.core, 'memory') and self.core.memory:
-                        self.core.memory.store_fact(
-                            category="arc3",
-                            key=f"hypothesis_{env_id}",
-                            value=hypothesis_text,
-                        )
-
-                if done:
-                    log.info("[ARC3] Среда завершена на шаге %d.", self._step_count)
-                    break
-
-            # ── Результат ─────────────────────────────────────────────────
-            elapsed = time.time() - self._episode_start
-            human_steps = 10  # заглушка — реальное значение из API
-            if isinstance(info, dict):
-                human_steps = info.get('human_steps', info.get('optimal_steps', 10))
-            rhae = (human_steps / max(self._step_count, 1)) ** 2
-
-            best_h = wm.best_hypothesis()
-            self._last_result = {
-                "env_id":      env_id,
-                "steps":       self._step_count,
-                "human_steps": human_steps,
-                "rhae":        round(rhae, 4),
-                "status":      "solved" if done else "timeout",
-                "elapsed_s":   round(elapsed, 1),
-                "hypothesis":  best_h.text if best_h else "—",
-                "patterns":    len(wm.patterns),
-                "world_model": wm.to_dict(),
-            }
-            log.info("[ARC3] Эпизод завершён: %s", self._last_result)
-
+            st = arc_play.get_learning_stats()
         except Exception as e:
-            log.error("[ARC3] Ошибка в эпизоде %s: %s", env_id, e)
-            self._last_result = {"env_id": env_id, "status": "error", "error": str(e)}
-        finally:
-            self._running = False
-            self._game = None
+            return f"❌ Ошибка получения истории: {e}"
 
-    def stop(self) -> str:
-        if not self._running:
-            return "ℹ️ Нет активного эпизода."
-        self._running = False
-        return f"⛔ Эпизод {self._env_id} остановлен на шаге {self._step_count}."
+        lines = ["📊 ARC-AGI-3 история:"]
+        lines.append(
+            f"  Запусков: {st.get('runs_total', 0)} | "
+            f"Успешных: {st.get('runs_ok', 0)}"
+        )
+        best = float(st.get("best_score", 0) or 0)
+        lines.append(f"  Лучший score: {best:.4f}")
+        if st.get("best_env"):
+            lines.append(f"  Лучшая среда: {st['best_env']}")
+        lines.append(
+            f"  Рекомендованных шагов: {st.get('recommended_steps', 10)} "
+            f"(режим: {st.get('qml_mode', 'classical')})"
+        )
+        ibm = st.get("ibm_quantum", "не настроен")
+        lines.append(f"  IBM Quantum: {ibm}")
 
-    def step_manual(self, action_str: str) -> str:
-        """Ручной шаг для отладки."""
-        if not self._game or not self._running:
-            return "❌ Нет активного эпизода. Запусти: arc решай <env_id>"
-        try:
-            action = int(action_str)
-        except ValueError:
-            action = action_str
-
-        state, reward, done, info = self._game.step(action)
-        self._step_count += 1
-        frame = state.get('frame') if isinstance(state, dict) else state
-        frame_text = self._frame_to_text(frame)
-        return (f"Шаг {self._step_count}: action={action}\n"
-                f"Reward: {reward} | Done: {done}\n"
-                f"Состояние:\n{frame_text[:300]}")
+        last = st.get("last")
+        if last:
+            ts = time.strftime("%Y-%m-%d %H:%M", time.localtime(last.get("ts", 0)))
+            ok_icon = "✅" if last.get("ok") else "❌"
+            lines.append(
+                f"  Последний: {last.get('env_id', '?')} | {ok_icon} | "
+                f"score={float(last.get('score', 0) or 0):.4f} | {ts}"
+            )
+        return "\n".join(lines)
 
     def list_envs(self) -> str:
-        """Список доступных сред."""
-        arc = self._load_arc()
-        if not arc:
-            return "❌ arc-agi не установлен"
+        """Среды из policy + дефолтные."""
+        err = self._require_arc_play()
+        if err:
+            return err
+
+        lines = ["🎮 ARC-AGI-3 — окружения:"]
         try:
-            envs = arc.list_envs() if hasattr(arc, 'list_envs') else []
-            if not envs:
-                return ("🎮 Среды ARC-AGI-3:\n"
-                        "  Установи arc-agi и получи ключ на https://three.arcprize.org\n"
-                        "  Затем: arc среды — покажет список")
-            return "🎮 Доступные среды:\n" + "\n".join(f"  • {e}" for e in envs[:20])
+            policy = arc_play._load_policy()
+            known = policy.get("envs", {})
+            if known:
+                lines.append("  Из истории:")
+                for eid, info in sorted(known.items()):
+                    runs = info.get("runs", 0)
+                    best = float(info.get("best_score", 0) or 0)
+                    ok_r = info.get("ok_runs", 0)
+                    lines.append(
+                        f"    • {eid}: {runs} запусков, "
+                        f"{ok_r} успешных, best={best:.4f}"
+                    )
+            else:
+                lines.append("  (история пуста)")
         except Exception as e:
-            return f"❌ Ошибка получения сред: {e}"
+            lines.append(f"  ⚠️ Политика недоступна: {e}")
+
+        lines.append(f"  Дефолтные среды: {', '.join(ARC3_DEFAULT_ENVS)}")
+        lines.append(f"  API: {ARC3_API_BASE}")
+        lines.append("  Команда: 'arc решай <env_id>'")
+        return "\n".join(lines)
+
+    def stop(self) -> str:
+        """
+        arc_play запускает игру как daemon-subprocess в .venv_arc.
+        Мягкая остановка недоступна из текущего процесса.
+        """
+        err = self._require_arc_play()
+        if err:
+            return err
+
+        try:
+            st = arc_play.get_status()
+        except Exception:
+            return "ℹ️ Статус недоступен."
+
+        if st.get("state") != "running":
+            return "ℹ️ Нет активного запуска."
+
+        env_id = st.get("env_id", "?")
+        return (
+            f"⚠️ Среда `{env_id}` запущена в subprocess (.venv_arc).\n"
+            "   Прямая остановка недоступна — дождись завершения\n"
+            "   или перезапусти ARGOS."
+        )
+
+    def llm_analyze(self, env_id: str) -> str:
+        """LLM анализирует политику по конкретной среде и даёт рекомендацию."""
+        err = self._require_arc_play()
+        if err:
+            return err
+        if not self.core:
+            return "❌ Core недоступен — LLM не подключён"
+
+        try:
+            policy = arc_play._load_policy()
+            env_data = policy.get("envs", {}).get(env_id, {})
+            if not env_data:
+                return f"ℹ️ Нет истории по среде '{env_id}' — запусти сначала."
+
+            prompt = (
+                f"ARC-AGI-3 среда '{env_id}':\n"
+                f"  Запусков: {env_data.get('runs', 0)}, "
+                f"успешных: {env_data.get('ok_runs', 0)}\n"
+                f"  Лучший score: {float(env_data.get('best_score', 0) or 0):.4f}\n"
+                f"  Статистика действий: {env_data.get('actions', {})}\n\n"
+                "Порекомендуй оптимальную стратегию для следующего запуска. "
+                "Кратко (2-3 предложения)."
+            )
+            result = self.core._ask_ollama("", prompt)
+            return f"🤖 Анализ '{env_id}':\n{result or 'Нет ответа'}"
+        except Exception as e:
+            return f"❌ Ошибка LLM-анализа: {e}"
 
 
 # ── Синглтон и handle() ───────────────────────────────────────────────────────
-_agent: ARC3Agent | None = None
+_agent: Optional[ARC3Agent] = None
 
 
-def handle(text: str, core=None) -> str | None:
+def handle(text: str, core=None) -> Optional[str]:
     global _agent
     t = text.lower().strip()
 
@@ -415,39 +316,62 @@ def handle(text: str, core=None) -> str | None:
 
     if _agent is None:
         _agent = ARC3Agent(core=core)
+    elif core is not None and _agent.core is None:
+        _agent.core = core
 
+    # ── Статус ────────────────────────────────────────────────────────────────
     if any(k in t for k in ["arc статус", "arc status", "arc3 статус"]):
         return _agent.status()
 
+    # ── Список сред ───────────────────────────────────────────────────────────
     if any(k in t for k in ["arc среды", "arc список", "arc envs", "arc environments"]):
         return _agent.list_envs()
 
+    # ── Стоп ──────────────────────────────────────────────────────────────────
     if any(k in t for k in ["arc стоп", "arc stop", "arc3 стоп"]):
         return _agent.stop()
 
-    import re
-    # arc шаг <действие>
-    m_step = re.search(r'arc\s+шаг\s+(\S+)', t)
-    if m_step:
-        return _agent.step_manual(m_step.group(1))
+    # ── История ───────────────────────────────────────────────────────────────
+    if any(k in t for k in ["arc история", "arc stats", "arc статистика"]):
+        return _agent.history()
 
-    # arc решай <env_id>
-    m_solve = re.search(r'arc\s+(?:решай|решить|solve|run|запусти)\s+(\S+)', t)
+    # ── Автозапуск ────────────────────────────────────────────────────────────
+    if any(k in t for k in ["arc авто", "arc auto"]):
+        return _agent.solve_auto()
+
+    # ── arc решай <env_id> [N шагов] ─────────────────────────────────────────
+    m_solve = re.search(
+        r'arc\s+(?:решай|решить|solve|run|запусти)\s+(\S+)(?:\s+(\d+))?', t
+    )
     if m_solve:
-        return _agent.solve(m_solve.group(1))
+        env_id = m_solve.group(1)
+        steps  = int(m_solve.group(2)) if m_solve.group(2) else 0
+        return _agent.solve(env_id, steps)
 
-    # arc <env_id> напрямую
-    m_direct = re.search(r'^arc\s+(\w{2,}[\d]+)', t)
+    # ── arc анализ <env_id> ───────────────────────────────────────────────────
+    m_analyze = re.search(r'arc\s+анализ\s+(\S+)', t)
+    if m_analyze:
+        return _agent.llm_analyze(m_analyze.group(1))
+
+    # ── arc <env_id> напрямую ─────────────────────────────────────────────────
+    m_direct = re.search(r'^arc\s+([a-z]{2}\d{2,})\s*(\d+)?$', t)
     if m_direct:
-        return _agent.solve(m_direct.group(1))
+        env_id = m_direct.group(1)
+        steps  = int(m_direct.group(2)) if m_direct.group(2) else 0
+        return _agent.solve(env_id, steps)
 
     return None
 
 
 TRIGGERS = [
-    "arc", "arc-agi", "arcagi", "arc status", "arc статус",
-    "arc среды", "arc envs", "arc environments", "arc стоп", "arc stop",
-    "arc шаг", "arc решай", "arc решить", "arc solve", "arc run",
+    "arc", "arc-agi", "arcagi",
+    "arc статус", "arc status",
+    "arc среды", "arc envs",
+    "arc стоп", "arc stop",
+    "arc история", "arc stats",
+    "arc авто", "arc auto",
+    "arc решай", "arc решить", "arc solve", "arc run",
+    "arc анализ",
 ]
 
 
