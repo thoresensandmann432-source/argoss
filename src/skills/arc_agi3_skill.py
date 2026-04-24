@@ -1,305 +1,313 @@
 """
-arc_agi3_skill.py — ARGOS ↔ ARC-AGI датасет + решатель
+arc_agi3_skill.py — ARGOS ↔ ARC-AGI-3 (делегирует в arc_play.py)
 
-arc-agi v0.0.7 — пакет для работы с датасетами ARC-AGI-1 и ARC-AGI-2:
-  • arc_agi.ARC1Training / ARC1Evaluation — задачи ARC-1
-  • arc_agi.ARC2Training / ARC2Evaluation — задачи ARC-2
-  • arc_agi.RemoteDataset               — загрузка с arcprize.org
+arc_play.py запускает игру в изолированном .venv_arc, где установлен
+настоящий arc-agi с Arcade + arcengine. ARC_API_KEY читается из .env.
 
-Каждая задача (Task):
-  • task.challenge  — список пар обучения [{input: Grid, output: Grid}, ...]
-  • task.solution   — правильный выходной Grid для тестовой пары
-  • task.inputs()   — тестовые входы (без ответа)
+Почему делегирование, а не прямой import:
+  • В системном Python установлен arc-agi v0.0.7 (только датасеты ARC1/2)
+  • В .venv_arc — игровой arc-agi (Arcade, make, step, scorecard)
+  • arc_play.py запускает .venv_arc/python как subprocess → правильный пакет
+
+ARC_API_KEY → three.arcprize.org/api/games → скачивает среду → arcengine
+Без ключа: анонимный ключ через /api/games/anonkey (ограниченный доступ)
 
 Команды:
-  arc статус          — статус пакета и датасетов
-  arc задача <N>      — показать N-ю задачу ARC1 Training
-  arc случайная       — случайная задача
-  arc загрузить       — скачать датасет (RemoteDataset)
-  arc решай <N>       — попытка LLM решить задачу N
+  arc статус          — venv, ключ API, текущий/последний запуск
+  arc среды           — окружения из policy + дефолтные
+  arc решай <env_id>  — запустить среду (делегирует arc_play.start_game_async)
+  arc решай <env> <N> — запустить с N шагов
+  arc авто            — автовыбор среды/действия (epsilon-greedy)
+  arc история         — статистика + QML-рекомендации
+  arc стоп            — статус остановки (subprocess управляется arc_play)
 """
 
 from __future__ import annotations
 
-SKILL_DESCRIPTION = "Работа с датасетами ARC-AGI-1/2 и решение задач"
-
 import os
-import json
-import random
-from typing import Optional, Any
+import re
+import sys
+import time
+from pathlib import Path
+from typing import Optional
 from src.argos_logger import get_logger
 
 log = get_logger("argos.arc3")
 
+# ── Импорт arc_play из корня проекта ─────────────────────────────────────────
+# Корень: src/skills/ → ../.. → src/ → ../../.. → project root
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+
+_ARC_PLAY_OK = False
+arc_play = None  # type: ignore[assignment]
+
+try:
+    if str(_PROJECT_ROOT) not in sys.path:
+        sys.path.insert(0, str(_PROJECT_ROOT))
+    import arc_play as _arc_play_module
+    arc_play = _arc_play_module
+    _ARC_PLAY_OK = True
+except Exception as _import_err:
+    log.warning("[ARC3] arc_play.py недоступен: %s", _import_err)
+
 # ── Константы ─────────────────────────────────────────────────────────────────
-ARC3_API_KEY_ENV  = "ARC_API_KEY"
-_ARC3_API_KEY_ALT = "ARC3_API_KEY"
-ARC3_API_BASE     = "https://three.arcprize.org"
-
-# 10 цветов ARC-AGI (индекс → имя для LLM-промпта)
-ARC_COLOR_NAMES = [
-    "black", "blue", "red", "green", "yellow",
-    "grey", "magenta", "orange", "azure", "maroon",
-]
-
-
-def _grid_to_text(grid_data) -> str:
-    """Конвертирует грид ARC в читаемый текст."""
-    try:
-        if hasattr(grid_data, 'to_list'):
-            rows = grid_data.to_list()
-        elif isinstance(grid_data, list):
-            rows = grid_data
-        else:
-            return str(grid_data)[:200]
-
-        lines = []
-        for row in rows:
-            cells = []
-            for val in row:
-                name = ARC_COLOR_NAMES[val] if isinstance(val, int) and val < len(ARC_COLOR_NAMES) else str(val)
-                cells.append(name[0])  # первая буква цвета
-            lines.append(" ".join(cells))
-        h = len(rows)
-        w = len(rows[0]) if rows else 0
-        return f"[{h}×{w}]\n" + "\n".join(lines)
-    except Exception as e:
-        return f"(ошибка рендера: {e})"
-
-
-_ARC_LOCAL_DIRS = {
-    "arc1_train": "data/arc_agi/arc1training",
-    "arc1_eval":  "data/arc_agi/arc1evaluation",
-    "arc2_train": "data/arc_agi/arc2training",
-    "arc2_eval":  "data/arc_agi/arc2evaluation",
-}
-
-
-def _load_dataset(ds_name: str = "arc1_train"):
-    """Загружает датасет из локального кэша или через пакет."""
-    try:
-        import arc_agi
-        mapping = {
-            "arc1_train": arc_agi.ARC1Training,
-            "arc1_eval":  arc_agi.ARC1Evaluation,
-            "arc2_train": arc_agi.ARC2Training,
-            "arc2_eval":  arc_agi.ARC2Evaluation,
-        }
-        cls = mapping.get(ds_name, arc_agi.ARC1Training)
-        # Пробуем загрузить из локального кэша (data/arc_agi/*)
-        local_dir = _ARC_LOCAL_DIRS.get(ds_name, "")
-        if local_dir and os.path.isdir(local_dir) and os.listdir(local_dir):
-            try:
-                ds = cls.load_directory(local_dir)
-                if len(ds) > 0:
-                    return ds
-            except Exception as _e:
-                log.warning("[ARC] load_directory %s: %s", local_dir, _e)
-        return cls()
-    except Exception as e:
-        log.warning("[ARC] Ошибка загрузки датасета %s: %s", ds_name, e)
-        return None
+ARC3_API_KEY_ENV = "ARC_API_KEY"
+ARC3_API_BASE    = "https://three.arcprize.org"
+ARC3_DEFAULT_ENVS = ["ls20", "ft09", "tr28"]
 
 
 class ARC3Agent:
-    """Агент для решения задач ARC-AGI из датасета."""
+    """
+    Агент ARC-AGI-3.
+
+    Вся игровая логика выполняется в arc_play.py через .venv_arc subprocess.
+    Этот класс отвечает за:
+      — форматирование команд и ответов для пользователя
+      — LLM-анализ результатов из arc_history.jsonl
+      — маршрутизацию handle() → arc_play.*
+    """
 
     def __init__(self, core=None):
         self.core = core
-        self._last_task = None
-        self._last_task_idx: int = -1
-        self._last_result: dict = {}
-        self._ds_name: str = "arc1_train"
 
-    def _get_api_key(self) -> str:
-        return (os.getenv(ARC3_API_KEY_ENV, "")
-                or os.getenv(_ARC3_API_KEY_ALT, "")).strip()
+    # ── Внутренние утилиты ────────────────────────────────────────────────────
+
+    def _key_line(self) -> str:
+        key = os.getenv(ARC3_API_KEY_ENV, "").strip()
+        if key:
+            return f"✅ {ARC3_API_KEY_ENV} задан (three.arcprize.org)"
+        return f"⚠️ {ARC3_API_KEY_ENV} не задан → работает анонимно"
+
+    def _require_arc_play(self) -> Optional[str]:
+        """Возвращает сообщение об ошибке если arc_play недоступен, иначе None."""
+        if not _ARC_PLAY_OK:
+            return (
+                "❌ arc_play.py не найден в корне проекта.\n"
+                f"   Ожидается: {_PROJECT_ROOT / 'arc_play.py'}"
+            )
+        return None
+
+    # ── Команды ───────────────────────────────────────────────────────────────
 
     def status(self) -> str:
-        lines = ["🎮 ARC-AGI Датасет:"]
+        lines = ["🎮 ARC-AGI-3 (arc_play.py + .venv_arc):"]
+
+        err = self._require_arc_play()
+        if err:
+            lines.append(f"  {err}")
+            return "\n".join(lines)
+
+        # Состояние venv
         try:
-            import arc_agi
-            lines.append(f"  ✅ arc-agi пакет установлен")
-            # Проверяем каждый датасет
-            for name, cls in [
-                ("ARC1 Training",   arc_agi.ARC1Training),
-                ("ARC1 Evaluation", arc_agi.ARC1Evaluation),
-                ("ARC2 Training",   arc_agi.ARC2Training),
-                ("ARC2 Evaluation", arc_agi.ARC2Evaluation),
-            ]:
-                try:
-                    ds = cls()
-                    n = len(ds)
-                    if n > 0:
-                        lines.append(f"  ✅ {name}: {n} задач")
-                    else:
-                        lines.append(f"  ⚠️ {name}: пустой (нужна загрузка)")
-                except Exception as e:
-                    lines.append(f"  ❌ {name}: {e}")
-        except ImportError:
-            lines.append("  ❌ arc-agi не установлен → pip install arc-agi")
+            venv_ok, venv_msg = arc_play.ensure_arc_venv()
+            lines.append(f"  {'✅' if venv_ok else '❌'} venv: {venv_msg}")
+        except Exception as e:
+            lines.append(f"  ⚠️ venv: проверка не удалась ({e})")
 
-        key = self._get_api_key()
-        if key:
-            lines.append(f"  🔑 API-ключ задан ({ARC3_API_KEY_ENV})")
-        else:
-            lines.append(f"  ℹ️ API-ключ не задан ({ARC3_API_KEY_ENV} в .env)")
+        # API-ключ
+        lines.append(f"  {self._key_line()}")
 
-        if self._last_result:
-            r = self._last_result
-            lines.append(
-                f"  📊 Последняя задача #{r.get('idx','?')}: "
-                f"{'✅ решена' if r.get('correct') else '❌ не решена'}"
-            )
+        # Статус текущего/последнего запуска
+        try:
+            st = arc_play.get_status()
+            state = st.get("state", "idle")
+            if state == "running":
+                lines.append(
+                    f"  🔄 Запущено: {st.get('env_id', '?')} | "
+                    f"шагов: {st.get('steps', '?')} | "
+                    f"действие: {st.get('action_name', '?')}"
+                )
+            elif state == "done":
+                sc = st.get("scorecard", {})
+                score = st.get("score", sc.get("score", "?"))
+                actions = st.get("total_actions", sc.get("total_actions", "?"))
+                lines.append(
+                    f"  ✅ Завершено: {st.get('env_id', '?')} | "
+                    f"score={score} | действий={actions}"
+                )
+            elif state == "error":
+                lines.append(f"  ❌ Ошибка: {st.get('message', '?')}")
+            elif state == "stale":
+                lines.append("  ⚠️ Зависший запуск (процесс завершился без финального статуса)")
+            else:
+                lines.append("  ℹ️ Нет активного запуска")
+        except Exception as e:
+            lines.append(f"  ⚠️ Статус недоступен: {e}")
+
         return "\n".join(lines)
 
-    def show_task(self, idx: int, ds_name: str = "arc1_train") -> str:
-        """Показывает задачу N из датасета."""
-        ds = _load_dataset(ds_name)
-        if ds is None:
-            return "❌ Датасет недоступен."
-        n = len(ds)
-        if n == 0:
-            return (
-                "⚠️ Датасет пуст — задачи не загружены.\n"
-                "Используй команду 'arc загрузить' или скачай датасет вручную:\n"
-                "  https://arcprize.org/play\n"
-                "  pip install arc-agi && python -c \"import arc_agi; arc_agi.ARC1Training().cache_all()\""
+    def solve(self, env_id: str, steps: int = 0,
+              action_name: Optional[str] = None) -> str:
+        """
+        Запускает игру через arc_play.start_game_async().
+        steps=0 → arc_play выберет количество шагов из QML-рекомендации.
+        """
+        err = self._require_arc_play()
+        if err:
+            return err
+
+        try:
+            result = arc_play.start_game_async(
+                env_id=env_id,
+                steps=steps,
+                render=False,
+                action_name=action_name or None,
             )
-        idx = idx % n
-        try:
-            task = ds[idx]
-            self._last_task = task
-            self._last_task_idx = idx
-            pairs = task.challenge if hasattr(task, 'challenge') else []
-            lines = [f"🧩 Задача #{idx} / {n} ({ds_name}):"]
-            lines.append(f"  Обучающих пар: {len(pairs)}")
-            for i, pair in enumerate(pairs[:2]):  # показываем первые 2
-                inp = getattr(pair, 'input', None) or (pair.get('input') if isinstance(pair, dict) else None)
-                out = getattr(pair, 'output', None) or (pair.get('output') if isinstance(pair, dict) else None)
-                lines.append(f"\n  [Пара {i+1}]")
-                lines.append(f"  Вход: {_grid_to_text(inp)}")
-                lines.append(f"  Выход: {_grid_to_text(out)}")
-            if len(pairs) > 2:
-                lines.append(f"\n  ... и ещё {len(pairs)-2} пар")
-            test_inputs = task.inputs() if hasattr(task, 'inputs') else []
-            lines.append(f"\n  Тестовых входов: {len(list(test_inputs)) if test_inputs else 0}")
-            return "\n".join(lines)
         except Exception as e:
-            return f"❌ Ошибка загрузки задачи #{idx}: {e}"
+            return f"❌ Ошибка запуска: {e}"
 
-    def random_task(self, ds_name: str = "arc1_train") -> str:
-        """Показывает случайную задачу."""
-        ds = _load_dataset(ds_name)
-        if ds is None:
-            return "❌ Датасет недоступен."
-        n = len(ds)
-        if n == 0:
-            return "⚠️ Датасет пуст."
-        idx = random.randint(0, n - 1)
-        return self.show_task(idx, ds_name)
+        if result.get("ok"):
+            steps_hint = f"{steps} шагов" if steps else "авто-шаги (QML)"
+            return (
+                f"🎮 ARC-AGI-3: запущена среда `{env_id}` ({steps_hint})\n"
+                f"   → 'arc статус' — текущий прогресс\n"
+                f"   → 'arc история' — результаты после завершения"
+            )
+        return f"⚠️ Не удалось запустить: {result.get('message', result)}"
 
-    def download(self) -> str:
-        """Попытка скачать датасет через RemoteDataset."""
+    def solve_auto(self) -> str:
+        """Автовыбор среды и действия (epsilon-greedy policy из arc_play)."""
+        err = self._require_arc_play()
+        if err:
+            return err
+
         try:
-            import arc_agi
-            lines = ["📥 Попытка загрузки датасетов ARC-AGI..."]
-            for name, cls in [
-                ("ARC1 Training",   arc_agi.ARC1Training),
-                ("ARC1 Evaluation", arc_agi.ARC1Evaluation),
-            ]:
-                try:
-                    ds = cls()
-                    if len(ds) == 0 and hasattr(ds, 'cache_all'):
-                        ds.cache_all()
-                    lines.append(f"  ✅ {name}: {len(ds)} задач")
-                except Exception as e:
-                    lines.append(f"  ❌ {name}: {e}")
-            return "\n".join(lines)
-        except Exception as e:
-            return f"❌ Ошибка загрузки: {e}"
-
-    def solve_task(self, idx: int, ds_name: str = "arc1_train") -> str:
-        """LLM пытается решить задачу N."""
-        ds = _load_dataset(ds_name)
-        if ds is None:
-            return "❌ Датасет недоступен."
-        n = len(ds)
-        if n == 0:
-            return "⚠️ Датасет пуст — сначала загрузи: 'arc загрузить'"
-        idx = idx % n
-        try:
-            task = ds[idx]
-            pairs = task.challenge if hasattr(task, 'challenge') else []
-            if not pairs:
-                return f"❌ Задача #{idx} не имеет обучающих пар."
-
-            # Формируем промпт для LLM
-            prompt_lines = [
-                f"Задача ARC-AGI #{idx}. Найди паттерн трансформации входного грида в выходной.",
-                "Обучающие примеры:",
-            ]
-            for i, pair in enumerate(pairs):
-                inp = getattr(pair, 'input', None) or (pair.get('input') if isinstance(pair, dict) else None)
-                out = getattr(pair, 'output', None) or (pair.get('output') if isinstance(pair, dict) else None)
-                prompt_lines.append(f"Пример {i+1}:")
-                prompt_lines.append(f"  Вход: {_grid_to_text(inp)}")
-                prompt_lines.append(f"  Выход: {_grid_to_text(out)}")
-
-            # Тестовый вход
-            test_inputs = list(task.inputs()) if hasattr(task, 'inputs') else []
-            if test_inputs:
-                prompt_lines.append("\nТестовый вход (дай ответный грид):")
-                prompt_lines.append(_grid_to_text(test_inputs[0]))
-            prompt_lines.append("\nОпиши паттерн и дай ответ для тестового входа.")
-
-            prompt = "\n".join(prompt_lines)
-
-            if self.core:
-                try:
-                    result = self.core.ask_ai(prompt)
-                    self._last_result = {"idx": idx, "correct": None, "answer": result}
-                    return f"🤖 ARC #{idx} — ответ LLM:\n{result[:600]}"
-                except Exception as e:
-                    return f"❌ LLM недоступен: {e}"
-            else:
-                return f"❌ Core не подключён — LLM недоступен.\n\nПромпт для ручного решения:\n{prompt[:400]}"
+            result = arc_play.start_game_async(env_id="auto", steps=0)
         except Exception as e:
             return f"❌ Ошибка: {e}"
 
-    def list_envs(self) -> str:
-        """Информация о доступных датасетах."""
-        lines = ["🎮 Датасеты ARC-AGI:"]
+        if result.get("ok"):
+            return (
+                "🤖 ARC-AGI-3: автозапуск (epsilon-greedy)\n"
+                "   → 'arc статус' для результата"
+            )
+        return f"⚠️ {result.get('message', result)}"
+
+    def history(self) -> str:
+        """Статистика прошлых запусков + QML-рекомендации."""
+        err = self._require_arc_play()
+        if err:
+            return err
+
         try:
-            import arc_agi
-            for name, cls, key in [
-                ("ARC1 Training",   arc_agi.ARC1Training,   "arc1_train"),
-                ("ARC1 Evaluation", arc_agi.ARC1Evaluation, "arc1_eval"),
-                ("ARC2 Training",   arc_agi.ARC2Training,   "arc2_train"),
-                ("ARC2 Evaluation", arc_agi.ARC2Evaluation, "arc2_eval"),
-            ]:
-                try:
-                    ds = cls()
-                    n = len(ds)
-                    status = f"{n} задач" if n > 0 else "пустой"
-                    lines.append(f"  • {name} ({key}): {status}")
-                except Exception as e:
-                    lines.append(f"  • {name}: ❌ {e}")
-        except ImportError:
-            lines.append("  ❌ arc-agi не установлен")
-        lines.append("\nКоманды:")
-        lines.append("  'arc задача 0'     — задача #0 из ARC1 Training")
-        lines.append("  'arc случайная'    — случайная задача")
-        lines.append("  'arc решай 5'      — LLM решает задачу #5")
-        lines.append("  'arc загрузить'    — скачать датасеты")
+            st = arc_play.get_learning_stats()
+        except Exception as e:
+            return f"❌ Ошибка получения истории: {e}"
+
+        lines = ["📊 ARC-AGI-3 история:"]
+        lines.append(
+            f"  Запусков: {st.get('runs_total', 0)} | "
+            f"Успешных: {st.get('runs_ok', 0)}"
+        )
+        best = float(st.get("best_score", 0) or 0)
+        lines.append(f"  Лучший score: {best:.4f}")
+        if st.get("best_env"):
+            lines.append(f"  Лучшая среда: {st['best_env']}")
+        lines.append(
+            f"  Рекомендованных шагов: {st.get('recommended_steps', 10)} "
+            f"(режим: {st.get('qml_mode', 'classical')})"
+        )
+        ibm = st.get("ibm_quantum", "не настроен")
+        lines.append(f"  IBM Quantum: {ibm}")
+
+        last = st.get("last")
+        if last:
+            ts = time.strftime("%Y-%m-%d %H:%M", time.localtime(last.get("ts", 0)))
+            ok_icon = "✅" if last.get("ok") else "❌"
+            lines.append(
+                f"  Последний: {last.get('env_id', '?')} | {ok_icon} | "
+                f"score={float(last.get('score', 0) or 0):.4f} | {ts}"
+            )
         return "\n".join(lines)
+
+    def list_envs(self) -> str:
+        """Среды из policy + дефолтные."""
+        err = self._require_arc_play()
+        if err:
+            return err
+
+        lines = ["🎮 ARC-AGI-3 — окружения:"]
+        try:
+            policy = arc_play._load_policy()
+            known = policy.get("envs", {})
+            if known:
+                lines.append("  Из истории:")
+                for eid, info in sorted(known.items()):
+                    runs = info.get("runs", 0)
+                    best = float(info.get("best_score", 0) or 0)
+                    ok_r = info.get("ok_runs", 0)
+                    lines.append(
+                        f"    • {eid}: {runs} запусков, "
+                        f"{ok_r} успешных, best={best:.4f}"
+                    )
+            else:
+                lines.append("  (история пуста)")
+        except Exception as e:
+            lines.append(f"  ⚠️ Политика недоступна: {e}")
+
+        lines.append(f"  Дефолтные среды: {', '.join(ARC3_DEFAULT_ENVS)}")
+        lines.append(f"  API: {ARC3_API_BASE}")
+        lines.append("  Команда: 'arc решай <env_id>'")
+        return "\n".join(lines)
+
+    def stop(self) -> str:
+        """
+        arc_play запускает игру как daemon-subprocess в .venv_arc.
+        Мягкая остановка недоступна из текущего процесса.
+        """
+        err = self._require_arc_play()
+        if err:
+            return err
+
+        try:
+            st = arc_play.get_status()
+        except Exception:
+            return "ℹ️ Статус недоступен."
+
+        if st.get("state") != "running":
+            return "ℹ️ Нет активного запуска."
+
+        env_id = st.get("env_id", "?")
+        return (
+            f"⚠️ Среда `{env_id}` запущена в subprocess (.venv_arc).\n"
+            "   Прямая остановка недоступна — дождись завершения\n"
+            "   или перезапусти ARGOS."
+        )
+
+    def llm_analyze(self, env_id: str) -> str:
+        """LLM анализирует политику по конкретной среде и даёт рекомендацию."""
+        err = self._require_arc_play()
+        if err:
+            return err
+        if not self.core:
+            return "❌ Core недоступен — LLM не подключён"
+
+        try:
+            policy = arc_play._load_policy()
+            env_data = policy.get("envs", {}).get(env_id, {})
+            if not env_data:
+                return f"ℹ️ Нет истории по среде '{env_id}' — запусти сначала."
+
+            prompt = (
+                f"ARC-AGI-3 среда '{env_id}':\n"
+                f"  Запусков: {env_data.get('runs', 0)}, "
+                f"успешных: {env_data.get('ok_runs', 0)}\n"
+                f"  Лучший score: {float(env_data.get('best_score', 0) or 0):.4f}\n"
+                f"  Статистика действий: {env_data.get('actions', {})}\n\n"
+                "Порекомендуй оптимальную стратегию для следующего запуска. "
+                "Кратко (2-3 предложения)."
+            )
+            result = self.core._ask_ollama("", prompt)
+            return f"🤖 Анализ '{env_id}':\n{result or 'Нет ответа'}"
+        except Exception as e:
+            return f"❌ Ошибка LLM-анализа: {e}"
 
 
 # ── Синглтон и handle() ───────────────────────────────────────────────────────
-_agent: ARC3Agent | None = None
+_agent: Optional[ARC3Agent] = None
 
 
-def handle(text: str, core=None) -> str | None:
+def handle(text: str, core=None) -> Optional[str]:
     global _agent
     t = text.lower().strip()
 
@@ -311,49 +319,59 @@ def handle(text: str, core=None) -> str | None:
     elif core is not None and _agent.core is None:
         _agent.core = core
 
+    # ── Статус ────────────────────────────────────────────────────────────────
     if any(k in t for k in ["arc статус", "arc status", "arc3 статус"]):
         return _agent.status()
 
-    if any(k in t for k in ["arc среды", "arc список", "arc envs", "arc датасеты", "arc datasets"]):
+    # ── Список сред ───────────────────────────────────────────────────────────
+    if any(k in t for k in ["arc среды", "arc список", "arc envs", "arc environments"]):
         return _agent.list_envs()
 
-    if any(k in t for k in ["arc загрузить", "arc скачать", "arc download"]):
-        return _agent.download()
+    # ── Стоп ──────────────────────────────────────────────────────────────────
+    if any(k in t for k in ["arc стоп", "arc stop", "arc3 стоп"]):
+        return _agent.stop()
 
-    if "arc случайная" in t or "arc random" in t:
-        ds = "arc2_train" if "arc2" in t else "arc1_train"
-        return _agent.random_task(ds)
+    # ── История ───────────────────────────────────────────────────────────────
+    if any(k in t for k in ["arc история", "arc stats", "arc статистика"]):
+        return _agent.history()
 
-    import re
+    # ── Автозапуск ────────────────────────────────────────────────────────────
+    if any(k in t for k in ["arc авто", "arc auto"]):
+        return _agent.solve_auto()
 
-    # arc задача <N>
-    m_task = re.search(r'arc\s+задач[ауи]?\s*(\d+)', t)
-    if m_task:
-        ds = "arc2_train" if "arc2" in t else "arc1_train"
-        return _agent.show_task(int(m_task.group(1)), ds)
-
-    # arc решай <N>
-    m_solve = re.search(r'arc\s+(?:решай|решить|solve|run)\s+(\d+)', t)
+    # ── arc решай <env_id> [N шагов] ─────────────────────────────────────────
+    m_solve = re.search(
+        r'arc\s+(?:решай|решить|solve|run|запусти)\s+(\S+)(?:\s+(\d+))?', t
+    )
     if m_solve:
-        ds = "arc2_train" if "arc2" in t else "arc1_train"
-        return _agent.solve_task(int(m_solve.group(1)), ds)
+        env_id = m_solve.group(1)
+        steps  = int(m_solve.group(2)) if m_solve.group(2) else 0
+        return _agent.solve(env_id, steps)
 
-    # arc <N> напрямую
-    m_direct = re.search(r'^arc\s+(\d+)$', t)
+    # ── arc анализ <env_id> ───────────────────────────────────────────────────
+    m_analyze = re.search(r'arc\s+анализ\s+(\S+)', t)
+    if m_analyze:
+        return _agent.llm_analyze(m_analyze.group(1))
+
+    # ── arc <env_id> напрямую ─────────────────────────────────────────────────
+    m_direct = re.search(r'^arc\s+([a-z]{2}\d{2,})\s*(\d+)?$', t)
     if m_direct:
-        return _agent.show_task(int(m_direct.group(1)))
-
-    # Общий запрос про arc без конкретной команды
-    if any(k in t for k in ["arc-agi", "arcagi", "arc agi"]):
-        return _agent.status()
+        env_id = m_direct.group(1)
+        steps  = int(m_direct.group(2)) if m_direct.group(2) else 0
+        return _agent.solve(env_id, steps)
 
     return None
 
 
 TRIGGERS = [
-    "arc", "arc-agi", "arcagi", "arc status", "arc статус",
-    "arc среды", "arc датасеты", "arc загрузить", "arc случайная",
-    "arc задача", "arc решай", "arc решить",
+    "arc", "arc-agi", "arcagi",
+    "arc статус", "arc status",
+    "arc среды", "arc envs",
+    "arc стоп", "arc stop",
+    "arc история", "arc stats",
+    "arc авто", "arc auto",
+    "arc решай", "arc решить", "arc solve", "arc run",
+    "arc анализ",
 ]
 
 

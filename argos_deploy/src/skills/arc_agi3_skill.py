@@ -23,18 +23,30 @@ from __future__ import annotations
 
 SKILL_DESCRIPTION = "Работа с датасетами ARC-AGI-1/2 и решение задач"
 
-import os
-import json
 import random
+from pathlib import Path
 from typing import Optional, Any
 from src.argos_logger import get_logger
 
 log = get_logger("argos.arc3")
 
 # ── Константы ─────────────────────────────────────────────────────────────────
-ARC3_API_KEY_ENV  = "ARC_API_KEY"
-_ARC3_API_KEY_ALT = "ARC3_API_KEY"
-ARC3_API_BASE     = "https://three.arcprize.org"
+# Локальная папка для кэша датасетов (JSON-файлы задач)
+_ARC_DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "arc_agi"
+
+# Маппинг: ключ датасета → (класс arc_agi, подпапка в _ARC_DATA_DIR)
+_DS_MAP = {
+    "arc1_train": ("ARC1Training",   "arc1_train"),
+    "arc1_eval":  ("ARC1Evaluation", "arc1_eval"),
+    "arc2_train": ("ARC2Training",   "arc2_train"),
+    "arc2_eval":  ("ARC2Evaluation", "arc2_eval"),
+}
+_DS_LABELS = {
+    "arc1_train": "ARC1 Training",
+    "arc1_eval":  "ARC1 Evaluation",
+    "arc2_train": "ARC2 Training",
+    "arc2_eval":  "ARC2 Evaluation",
+}
 
 # 10 цветов ARC-AGI (индекс → имя для LLM-промпта)
 ARC_COLOR_NAMES = [
@@ -67,20 +79,31 @@ def _grid_to_text(grid_data) -> str:
         return f"(ошибка рендера: {e})"
 
 
+def _get_arc_cls(cls_name: str):
+    """Возвращает класс датасета из arc_agi по имени."""
+    import arc_agi
+    return getattr(arc_agi, cls_name)
+
+
 def _load_dataset(ds_name: str = "arc1_train"):
-    """Загружает датасет. Возвращает объект датасета или None."""
+    """
+    Загружает датасет из локального кэша (_ARC_DATA_DIR/<subdir>).
+    Возвращает Dataset или None если данных нет (нужно запустить download).
+    НЕ скачивает автоматически — только читает уже загруженные файлы.
+    """
+    entry = _DS_MAP.get(ds_name)
+    if entry is None:
+        log.warning("[ARC] Неизвестный датасет: %s", ds_name)
+        return None
+    cls_name, subdir = entry
+    path = _ARC_DATA_DIR / subdir
+    if not path.exists() or not any(path.glob("*.json")):
+        return None  # нет локальных данных — нужен 'arc загрузить'
     try:
-        import arc_agi
-        mapping = {
-            "arc1_train": arc_agi.ARC1Training,
-            "arc1_eval":  arc_agi.ARC1Evaluation,
-            "arc2_train": arc_agi.ARC2Training,
-            "arc2_eval":  arc_agi.ARC2Evaluation,
-        }
-        cls = mapping.get(ds_name, arc_agi.ARC1Training)
-        return cls()
+        cls = _get_arc_cls(cls_name)
+        return cls.load_directory(path)
     except Exception as e:
-        log.warning("[ARC] Ошибка загрузки датасета %s: %s", ds_name, e)
+        log.warning("[ARC] Ошибка чтения датасета %s из %s: %s", ds_name, path, e)
         return None
 
 
@@ -94,39 +117,29 @@ class ARC3Agent:
         self._last_result: dict = {}
         self._ds_name: str = "arc1_train"
 
-    def _get_api_key(self) -> str:
-        return (os.getenv(ARC3_API_KEY_ENV, "")
-                or os.getenv(_ARC3_API_KEY_ALT, "")).strip()
-
     def status(self) -> str:
         lines = ["🎮 ARC-AGI Датасет:"]
         try:
-            import arc_agi
-            lines.append(f"  ✅ arc-agi пакет установлен")
-            # Проверяем каждый датасет
-            for name, cls in [
-                ("ARC1 Training",   arc_agi.ARC1Training),
-                ("ARC1 Evaluation", arc_agi.ARC1Evaluation),
-                ("ARC2 Training",   arc_agi.ARC2Training),
-                ("ARC2 Evaluation", arc_agi.ARC2Evaluation),
-            ]:
-                try:
-                    ds = cls()
-                    n = len(ds)
-                    if n > 0:
-                        lines.append(f"  ✅ {name}: {n} задач")
-                    else:
-                        lines.append(f"  ⚠️ {name}: пустой (нужна загрузка)")
-                except Exception as e:
-                    lines.append(f"  ❌ {name}: {e}")
+            import arc_agi  # noqa: F401
+            lines.append("  ✅ arc-agi пакет установлен")
         except ImportError:
             lines.append("  ❌ arc-agi не установлен → pip install arc-agi")
+            return "\n".join(lines)
 
-        key = self._get_api_key()
-        if key:
-            lines.append(f"  🔑 API-ключ задан ({ARC3_API_KEY_ENV})")
-        else:
-            lines.append(f"  ℹ️ API-ключ не задан ({ARC3_API_KEY_ENV} в .env)")
+        # Проверяем локальный кэш для каждого датасета
+        any_missing = False
+        for ds_key, label in _DS_LABELS.items():
+            _, subdir = _DS_MAP[ds_key]
+            path = _ARC_DATA_DIR / subdir
+            json_files = list(path.glob("*.json")) if path.exists() else []
+            if json_files:
+                lines.append(f"  ✅ {label}: {len(json_files)} задач (кэш: {path})")
+            else:
+                lines.append(f"  ⚠️ {label}: нет данных → запусти 'arc загрузить'")
+                any_missing = True
+
+        if any_missing:
+            lines.append("  💡 Данные скачиваются с GitHub (публичные репо, без ключей)")
 
         if self._last_result:
             r = self._last_result
@@ -154,19 +167,18 @@ class ARC3Agent:
             task = ds[idx]
             self._last_task = task
             self._last_task_idx = idx
-            pairs = task.challenge if hasattr(task, 'challenge') else []
+            train_pairs = task.train   # List[Pair] — обучающие пары
+            test_pairs  = task.test    # List[Pair] — тестовые пары
             lines = [f"🧩 Задача #{idx} / {n} ({ds_name}):"]
-            lines.append(f"  Обучающих пар: {len(pairs)}")
-            for i, pair in enumerate(pairs[:2]):  # показываем первые 2
-                inp = getattr(pair, 'input', None) or (pair.get('input') if isinstance(pair, dict) else None)
-                out = getattr(pair, 'output', None) or (pair.get('output') if isinstance(pair, dict) else None)
+            lines.append(f"  Обучающих пар: {len(train_pairs)} | Тестовых: {len(test_pairs)}")
+            for i, pair in enumerate(train_pairs[:2]):  # показываем первые 2
+                inp = getattr(pair, 'input', None)
+                out = getattr(pair, 'output', None)
                 lines.append(f"\n  [Пара {i+1}]")
                 lines.append(f"  Вход: {_grid_to_text(inp)}")
                 lines.append(f"  Выход: {_grid_to_text(out)}")
-            if len(pairs) > 2:
-                lines.append(f"\n  ... и ещё {len(pairs)-2} пар")
-            test_inputs = task.inputs() if hasattr(task, 'inputs') else []
-            lines.append(f"\n  Тестовых входов: {len(list(test_inputs)) if test_inputs else 0}")
+            if len(train_pairs) > 2:
+                lines.append(f"\n  ... и ещё {len(train_pairs)-2} пар")
             return "\n".join(lines)
         except Exception as e:
             return f"❌ Ошибка загрузки задачи #{idx}: {e}"
@@ -183,21 +195,29 @@ class ARC3Agent:
         return self.show_task(idx, ds_name)
 
     def download(self) -> str:
-        """Попытка скачать датасет через RemoteDataset."""
+        """
+        Скачивает датасеты ARC-AGI с GitHub в локальный кэш.
+        Использует cls.download(path) — скачивает ZIP-архив репо и извлекает JSON.
+        Не требует API-ключей (данные публичные).
+        """
         try:
-            import arc_agi
-            lines = ["📥 Попытка загрузки датасетов ARC-AGI..."]
-            for name, cls in [
-                ("ARC1 Training",   arc_agi.ARC1Training),
-                ("ARC1 Evaluation", arc_agi.ARC1Evaluation),
-            ]:
+            lines = ["📥 Загрузка датасетов ARC-AGI с GitHub..."]
+            _ARC_DATA_DIR.mkdir(parents=True, exist_ok=True)
+            for ds_key, label in _DS_LABELS.items():
+                cls_name, subdir = _DS_MAP[ds_key]
+                path = _ARC_DATA_DIR / subdir
+                # Пропускаем уже загруженные
+                existing = list(path.glob("*.json")) if path.exists() else []
+                if existing:
+                    lines.append(f"  ✅ {label}: уже есть {len(existing)} задач, пропускаем")
+                    continue
                 try:
-                    ds = cls()
-                    if len(ds) == 0 and hasattr(ds, 'cache_all'):
-                        ds.cache_all()
-                    lines.append(f"  ✅ {name}: {len(ds)} задач")
+                    cls = _get_arc_cls(cls_name)
+                    ds = cls.download(path)   # скачивает ZIP с GitHub → извлекает JSON
+                    n = len(ds)
+                    lines.append(f"  {'✅' if n > 0 else '⚠️'} {label}: {n} задач → {path}")
                 except Exception as e:
-                    lines.append(f"  ❌ {name}: {e}")
+                    lines.append(f"  ❌ {label}: {e}")
             return "\n".join(lines)
         except Exception as e:
             return f"❌ Ошибка загрузки: {e}"
@@ -213,8 +233,9 @@ class ARC3Agent:
         idx = idx % n
         try:
             task = ds[idx]
-            pairs = task.challenge if hasattr(task, 'challenge') else []
-            if not pairs:
+            train_pairs = task.train   # List[Pair]
+            test_pairs  = task.test    # List[Pair]
+            if not train_pairs:
                 return f"❌ Задача #{idx} не имеет обучающих пар."
 
             # Формируем промпт для LLM
@@ -222,18 +243,17 @@ class ARC3Agent:
                 f"Задача ARC-AGI #{idx}. Найди паттерн трансформации входного грида в выходной.",
                 "Обучающие примеры:",
             ]
-            for i, pair in enumerate(pairs):
-                inp = getattr(pair, 'input', None) or (pair.get('input') if isinstance(pair, dict) else None)
-                out = getattr(pair, 'output', None) or (pair.get('output') if isinstance(pair, dict) else None)
+            for i, pair in enumerate(train_pairs):
+                inp = getattr(pair, 'input', None)
+                out = getattr(pair, 'output', None)
                 prompt_lines.append(f"Пример {i+1}:")
                 prompt_lines.append(f"  Вход: {_grid_to_text(inp)}")
                 prompt_lines.append(f"  Выход: {_grid_to_text(out)}")
 
-            # Тестовый вход
-            test_inputs = list(task.inputs()) if hasattr(task, 'inputs') else []
-            if test_inputs:
+            # Тестовый вход (без ответа)
+            if test_pairs:
                 prompt_lines.append("\nТестовый вход (дай ответный грид):")
-                prompt_lines.append(_grid_to_text(test_inputs[0]))
+                prompt_lines.append(_grid_to_text(getattr(test_pairs[0], 'input', None)))
             prompt_lines.append("\nОпиши паттерн и дай ответ для тестового входа.")
 
             prompt = "\n".join(prompt_lines)
